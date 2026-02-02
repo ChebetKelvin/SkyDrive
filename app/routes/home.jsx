@@ -1,4 +1,7 @@
-import { Welcome } from "../welcome/welcome";
+import FleetPreview from "../components/FleetPreview";
+import Hero from "../components/Hero";
+import HowItWorks from "../components/HowItWorks";
+import Testimonials from "../components/Testimonial";
 
 export function meta() {
   return [
@@ -8,5 +11,12 @@ export function meta() {
 }
 
 export default function Home() {
-  return <Welcome />;
+  return (
+    <div>
+      <Hero />
+      <FleetPreview />
+      <HowItWorks />
+      <Testimonials />
+    </div>
+  );
 }

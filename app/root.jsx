@@ -8,7 +8,8 @@ import {
 } from "react-router";
 
 import "./app.css";
-
+import Navbar from "./components/Navbar";
+import Footer from "./components/Footer";
 export const links = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {
@@ -32,7 +33,9 @@ export function Layout({ children }) {
         <Links />
       </head>
       <body>
+        <Navbar />
         {children}
+        <Footer />
         <ScrollRestoration />
         <Scripts />
       </body>
