@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
 import { getPaymentByCheckoutId } from "../models/payments.server.js";
-import { getBookingByPaymentId } from "../models/booking.js";
+import { getBookingByPaymentId } from "../models/booking.server.js";
 import { getSession } from "../.server/session.js";
 import {
   FaCheckCircle,

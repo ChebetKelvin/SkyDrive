@@ -14,7 +14,7 @@ import { getVehicleById } from "../models/vehicles";
 import {
   createPendingBooking,
   createConfirmedBooking,
-} from "../models/booking";
+} from "../models/booking.server.js";
 import { checkBookingConflict } from "../service/bookingChecks.js";
 import { stkPush, normalizePhone } from "../.server/stkpush.js";
 import {

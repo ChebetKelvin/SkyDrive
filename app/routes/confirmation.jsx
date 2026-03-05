@@ -23,7 +23,7 @@ import {
   FaMoneyBillWave,
   FaMobileAlt,
 } from "react-icons/fa";
-import { getBookingById } from "../models/booking";
+import { getBookingById } from "../models/booking.server";
 import toast, { Toaster } from "react-hot-toast";
 
 // ------------------- Loader -------------------
