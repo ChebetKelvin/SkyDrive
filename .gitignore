@@ -5,3 +5,9 @@
 # React Router
 /.react-router/
 /build/
+.env
+
+# Logs
+logs
+*.log
+npm-debug.log*

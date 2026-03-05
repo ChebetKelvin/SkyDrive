@@ -1,509 +1,577 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router";
+import {
+  useParams,
+  useNavigate,
+  useLoaderData,
+  Form,
+  redirect,
+  useNavigation,
+  useActionData,
+} from "react-router";
 import { motion } from "framer-motion";
+import toast, { Toaster } from "react-hot-toast";
+import { getVehicleById } from "../models/vehicles";
+import {
+  createPendingBooking,
+  createConfirmedBooking,
+} from "../models/booking";
+import { checkBookingConflict } from "../service/bookingChecks.js";
+import { stkPush, normalizePhone } from "../.server/stkpush.js";
+import {
+  getSession,
+  commitSession,
+  setErrorMessage,
+  setSuccessMessage,
+} from "../.server/session.js";
 import {
   FaArrowLeft,
   FaCalendarAlt,
   FaClock,
   FaUser,
+  FaCreditCard,
+  FaLock,
   FaPhone,
   FaEnvelope,
   FaMapMarkerAlt,
-  FaCreditCard,
-  FaLock,
-  FaShieldAlt,
-  FaCheckCircle,
-  FaCar,
-  FaCrown,
-  FaCheck,
+  FaMobileAlt,
   FaInfoCircle,
   FaExclamationTriangle,
+  FaCrown,
+  FaSpinner,
+  FaMoneyBillWave,
 } from "react-icons/fa";
 
-import vehiclesData from "../vehicles";
+// Helper function to format amount for messages
+function formatAmountForMessage(amount) {
+  return amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
 
+// ------------------- Loader -------------------
+export async function loader({ request, params }) {
+  const session = await getSession(request.headers.get("Cookie"));
+  const user = session.get("user");
+
+  console.log("🔍 Booking page loader - User:", user ? user.email : "No user");
+
+  if (!user) {
+    console.log("❌ No user found, redirecting to login");
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("redirectTo", request.url);
+    return redirect(loginUrl.toString());
+  }
+
+  const { id } = params;
+  const vehicle = await getVehicleById(id);
+  if (!vehicle) throw new Response("Vehicle Not Found", { status: 404 });
+
+  // Transform data to match component expectations
+  const transformedVehicle = {
+    ...vehicle,
+    _id: vehicle._id?.toString(),
+    images: vehicle.images || [vehicle.thumbnail].filter(Boolean),
+    features: vehicle.features || [],
+    serviceLocations: vehicle.serviceLocations || [],
+    specifications: vehicle.specifications || {},
+    reviews: vehicle.reviews || vehicle.reviewCount || 0,
+    pricing: {
+      hourly: vehicle.pricing?.hourly || null,
+      daily: vehicle.pricing?.daily || 0,
+      weekly:
+        vehicle.pricing?.weekly ||
+        (vehicle.pricing?.daily ? vehicle.pricing.daily * 7 * 0.9 : 0),
+      monthly:
+        vehicle.pricing?.monthly ||
+        (vehicle.pricing?.daily ? vehicle.pricing.daily * 30 * 0.8 : 0),
+      currency: vehicle.pricing?.currency || "KES",
+    },
+    capacity: {
+      passengers: vehicle.capacity?.passengers || 4,
+      luggage: vehicle.capacity?.luggage || 2,
+    },
+    price: vehicle.price || vehicle.pricing?.daily || 0,
+  };
+
+  return {
+    vehicle: transformedVehicle,
+    user,
+  };
+}
+
+// ------------------- Action -------------------
+export async function action({ request, params }) {
+  const session = await getSession(request.headers.get("Cookie"));
+  const user = session.get("user");
+
+  if (!user) {
+    setErrorMessage(session, "You must be logged in to make a booking");
+    return redirect("/login", {
+      headers: { "Set-Cookie": await commitSession(session) },
+    });
+  }
+
+  const formData = await request.formData();
+  const vehicleId = params.id;
+
+  console.log("🔍 Action called for vehicle:", vehicleId);
+  console.log("👤 User making booking:", user.email, "ID:", user.id);
+
+  // Get vehicle
+  const vehicle = await getVehicleById(vehicleId);
+  if (!vehicle) {
+    setErrorMessage(session, "Vehicle not found");
+    return redirect("/fleet", {
+      headers: { "Set-Cookie": await commitSession(session) },
+    });
+  }
+
+  // Check if vehicle has available units
+  if (vehicle.availableUnits <= 0) {
+    setErrorMessage(session, "Sorry, this vehicle is fully booked.");
+    return redirect(`/fleet/${vehicleId}`, {
+      headers: { "Set-Cookie": await commitSession(session) },
+    });
+  }
+
+  // Collect form data
+  const fullName = formData.get("fullName")?.trim();
+  const email = formData.get("email")?.trim();
+  const phone = formData.get("phone")?.trim();
+  const pickupDate = formData.get("pickupDate");
+  const pickupTime = formData.get("pickupTime");
+  const duration = parseInt(formData.get("duration"));
+  const passengers = parseInt(formData.get("passengers"));
+  const pickupLocation = formData.get("pickupLocation");
+  const dropoffLocation = formData.get("dropoffLocation");
+  const specialRequests = formData.get("specialRequests")?.trim();
+  const paymentMethod = formData.get("paymentMethod");
+  const totalAmount = parseFloat(formData.get("totalAmount"));
+  const baseAmount = parseFloat(formData.get("baseAmount"));
+  const serviceFee = parseFloat(formData.get("serviceFee"));
+  const insuranceFee = parseFloat(formData.get("insuranceFee"));
+
+  // Validation
+  const errors = {};
+  if (!fullName) errors.fullName = "Full name is required.";
+  if (!email) errors.email = "Email is required.";
+  if (!phone) errors.phone = "Phone number is required.";
+  if (!pickupDate) errors.pickupDate = "Pickup date is required.";
+  if (!pickupTime) errors.pickupTime = "Pickup time is required.";
+  if (!duration || duration < 1)
+    errors.duration = "Valid duration is required.";
+  if (!passengers || passengers < 1)
+    errors.passengers = "Number of passengers is required.";
+  if (!paymentMethod) errors.paymentMethod = "Select a payment method.";
+
+  if (Object.keys(errors).length > 0) {
+    return { errors };
+  }
+
+  // Check for booking conflicts
+  const conflictResult = await checkBookingConflict(
+    vehicleId,
+    pickupDate,
+    pickupTime,
+    duration,
+  );
+
+  if (conflictResult.hasConflict) {
+    setErrorMessage(
+      session,
+      "This vehicle is already booked for the selected time",
+    );
+    return redirect(`/book/${vehicleId}`, {
+      headers: { "Set-Cookie": await commitSession(session) },
+    });
+  }
+
+  // Prepare base booking data (without status)
+  const bookingData = {
+    vehicleId: vehicle._id.toString(),
+    vehicleName: vehicle.name,
+    vehicleImage: vehicle.thumbnail || vehicle.images?.[0],
+    vehicleCategory: vehicle.category,
+    dailyRate: vehicle.pricing?.daily || vehicle.price || 0,
+    hourlyRate:
+      vehicle.pricing?.hourly?.rate ||
+      (vehicle.pricing?.daily ? vehicle.pricing.daily / 24 : 0),
+    customerName: fullName,
+    customerEmail: email,
+    customerPhone: phone,
+    pickupDate,
+    pickupTime,
+    duration,
+    passengers,
+    pickupLocation:
+      pickupLocation || vehicle.serviceLocations?.[0] || "Nairobi CBD",
+    dropoffLocation:
+      dropoffLocation ||
+      pickupLocation ||
+      vehicle.serviceLocations?.[0] ||
+      "Nairobi CBD",
+    specialRequests: specialRequests || "",
+    paymentMethod,
+    totalAmount,
+    baseAmount,
+    serviceFee,
+    insuranceFee,
+    userId: user.id,
+    userEmail: user.email,
+    source: "website",
+  };
+
+  // 🔥 M-PESA FLOW - Create pending booking, redirect to payment
+  if (paymentMethod === "mpesa") {
+    try {
+      const phoneNumber = normalizePhone(phone);
+
+      if (!phoneNumber) {
+        setErrorMessage(
+          session,
+          "Invalid phone number format. Please use 07XX or 2547XX format",
+        );
+        return redirect(`/book/${vehicleId}`, {
+          headers: { "Set-Cookie": await commitSession(session) },
+        });
+      }
+
+      console.log(
+        "📱 Initiating STK push for:",
+        phoneNumber,
+        "Amount:",
+        totalAmount,
+      );
+
+      // Initiate STK Push FIRST
+      const safResponse = await stkPush({
+        phone: phoneNumber,
+        amount: Math.round(totalAmount),
+      });
+
+      console.log("📲 STK Response:", safResponse);
+
+      if (!safResponse.CheckoutRequestID) {
+        setErrorMessage(
+          session,
+          "Failed to initiate payment. Please try again.",
+        );
+        return redirect(`/book/${vehicleId}`, {
+          headers: { "Set-Cookie": await commitSession(session) },
+        });
+      }
+
+      // Create PENDING booking with payment ID from STK response
+      const pendingBooking = await createPendingBooking({
+        ...bookingData,
+        paymentId: safResponse.CheckoutRequestID,
+        paymentMetadata: {
+          checkoutRequestId: safResponse.CheckoutRequestID,
+          merchantRequestId: safResponse.MerchantRequestID,
+          phoneNumber,
+          amount: totalAmount,
+          initiatedAt: new Date().toISOString(),
+        },
+        status: "payment_pending",
+        paymentStatus: "awaiting_payment",
+      });
+
+      if (!pendingBooking.success) {
+        console.error(
+          "❌ Booking failed after STK success:",
+          pendingBooking.error,
+        );
+        setErrorMessage(
+          session,
+          "Payment initiated but booking failed. Please contact support.",
+        );
+        return redirect(`/book/${vehicleId}`, {
+          headers: { "Set-Cookie": await commitSession(session) },
+        });
+      }
+
+      // Store booking info in session for payment processing page
+      session.set("pendingBookingId", pendingBooking.bookingId);
+      session.set("checkoutRequestId", safResponse.CheckoutRequestID);
+      session.set("paymentMethod", "mpesa");
+      session.set("requiresPayment", true);
+
+      setSuccessMessage(
+        session,
+        "Please complete payment on your phone. Your booking will be confirmed once payment is received.",
+      );
+
+      return redirect("/payment-status", {
+        headers: { "Set-Cookie": await commitSession(session) },
+      });
+    } catch (error) {
+      console.error("💥 M-Pesa error:", error);
+      setErrorMessage(session, "Payment system error. Please try again.");
+      return redirect(`/book/${vehicleId}`, {
+        headers: { "Set-Cookie": await commitSession(session) },
+      });
+    }
+  }
+
+  // 💵 PAY ON DELIVERY FLOW - Create confirmed booking immediately
+  if (paymentMethod === "delivery") {
+    try {
+      console.log("💰 Processing Pay on Delivery booking...");
+
+      // Create confirmed booking with pending payment status using createConfirmedBooking
+      const bookingResult = await createConfirmedBooking({
+        ...bookingData,
+        paymentMethod: "cash_on_delivery",
+      });
+
+      if (!bookingResult.success) {
+        console.error(
+          "❌ Pay on Delivery booking failed:",
+          bookingResult.error,
+        );
+        setErrorMessage(
+          session,
+          bookingResult.error || "Failed to create booking",
+        );
+        return redirect(`/book/${vehicleId}`, {
+          headers: { "Set-Cookie": await commitSession(session) },
+        });
+      }
+
+      console.log("✅ Pay on Delivery booking created:", bookingResult);
+
+      // Store success message in session
+      setSuccessMessage(
+        session,
+        "Booking confirmed! Please have KES " +
+          formatAmountForMessage(totalAmount) +
+          " cash ready for payment on delivery.",
+      );
+
+      // Redirect directly to confirmation page
+      return redirect(`/booking-confirmation/${bookingResult.bookingId}`, {
+        headers: { "Set-Cookie": await commitSession(session) },
+      });
+    } catch (error) {
+      console.error("💥 Pay on delivery error:", error);
+      setErrorMessage(session, "Failed to create booking. Please try again.");
+      return redirect(`/book/${vehicleId}`, {
+        headers: { "Set-Cookie": await commitSession(session) },
+      });
+    }
+  }
+
+  // CARD FLOW (placeholder)
+  if (paymentMethod === "card") {
+    setErrorMessage(session, "Card payments coming soon!");
+    return redirect(`/book/${vehicleId}`, {
+      headers: { "Set-Cookie": await commitSession(session) },
+    });
+  }
+
+  // Default redirect
+  return redirect(`/book/${vehicleId}`, {
+    headers: { "Set-Cookie": await commitSession(session) },
+  });
+}
+
+// ------------------- BookingPage Component -------------------
 export default function BookingPage() {
-  const { id } = useParams();
+  const { vehicle, user } = useLoaderData();
+  const actionData = useActionData();
+  const navigation = useNavigation();
   const navigate = useNavigate();
-  const vehicle =
-    vehiclesData.find((v) => v.id === parseInt(id || "3")) || vehiclesData[2];
+  const { id } = useParams();
 
-  const [formData, setFormData] = useState({
-    fullName: "",
-    email: "",
+  const isSubmitting = navigation.state === "submitting";
+
+  const [formState, setFormState] = useState({
+    fullName: user?.name || "",
+    email: user?.email || "",
     phone: "",
     pickupDate: "",
-    pickupTime: "",
-    duration: "1",
-    passengers: "1",
+    pickupTime: "09:00",
+    duration: 1,
+    passengers: vehicle.capacity?.passengers || 4,
+    paymentMethod: "mpesa",
+    pickupLocation: vehicle.serviceLocations?.[0] || "Nairobi CBD",
+    dropoffLocation: vehicle.serviceLocations?.[0] || "Nairobi CBD",
     specialRequests: "",
-    paymentMethod: "card",
   });
 
-  const [step, setStep] = useState(1);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [bookingSuccess, setBookingSuccess] = useState(false);
-  const [bookingData, setBookingData] = useState(null);
+  const [availabilityWarning, setAvailabilityWarning] = useState("");
+  const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [totals, setTotals] = useState({
     base: 0,
     serviceFee: 0,
     insurance: 0,
     total: 0,
   });
-  const [availabilityWarning, setAvailabilityWarning] = useState("");
-  const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
 
   useEffect(() => {
-    // Set default pickup date to tomorrow
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     const formattedDate = tomorrow.toISOString().split("T")[0];
 
-    // Get initial passenger count from vehicle capacity
-    const initialPassengers =
-      typeof vehicle.capacity === "object"
-        ? vehicle.capacity.passengers || 1
-        : vehicle.capacity || 1;
-
-    setFormData((prev) => ({
+    setFormState((prev) => ({
       ...prev,
       pickupDate: formattedDate,
-      pickupTime: "09:00",
-      passengers: initialPassengers.toString(),
+      passengers: Math.min(prev.passengers, vehicle.capacity?.passengers || 4),
+      pickupLocation: vehicle.serviceLocations?.[0] || prev.pickupLocation,
+      dropoffLocation: vehicle.serviceLocations?.[0] || prev.dropoffLocation,
     }));
   }, [vehicle]);
 
-  // Calculate totals whenever duration changes
   useEffect(() => {
-    const calculatedTotals = calculateTotal();
-    setTotals(calculatedTotals);
-  }, [formData.duration, vehicle]);
+    const duration = parseInt(formState.duration) || 1;
 
-  // Check availability when pickup date/time changes
-  useEffect(() => {
-    if (formData.pickupDate && formData.pickupTime && formData.duration) {
-      checkAvailability();
+    let hourlyRate;
+    if (vehicle.pricing?.hourly?.rate) {
+      hourlyRate = vehicle.pricing.hourly.rate;
+    } else {
+      const dailyRate = vehicle.pricing?.daily || vehicle.price || 0;
+      hourlyRate = dailyRate / 24;
     }
-  }, [formData.pickupDate, formData.pickupTime, formData.duration]);
 
-  const formatPrice = (amount) => {
-    if (isNaN(amount) || amount === null || amount === undefined) {
-      return new Intl.NumberFormat("en-KE", {
-        style: "currency",
-        currency: "KES",
-        minimumFractionDigits: 0,
-      }).format(0);
-    }
-    return new Intl.NumberFormat("en-KE", {
-      style: "currency",
-      currency: "KES",
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const calculateTotal = () => {
-    const duration = parseInt(formData.duration) || 1;
-    // Fix: Handle missing pricing data
-    const hourlyRate =
-      vehicle.pricing?.perHour || vehicle.pricing?.perDay / 24 || 0;
     const basePrice = hourlyRate * duration;
     const serviceFee = basePrice * 0.1;
     const insurance = basePrice * 0.05;
 
-    return {
+    setTotals({
       base: basePrice,
       serviceFee,
       insurance,
       total: basePrice + serviceFee + insurance,
-    };
+    });
+  }, [formState.duration, vehicle]);
+
+  useEffect(() => {
+    if (formState.pickupDate && formState.pickupTime && formState.duration) {
+      checkAvailability();
+    }
+  }, [formState.pickupDate, formState.pickupTime, formState.duration]);
+
+  useEffect(() => {
+    if (actionData?.errors) {
+      Object.values(actionData.errors).forEach((error) => {
+        toast.error(error);
+      });
+    }
+  }, [actionData]);
+
+  const handleChange = (e) => {
+    const { name, value, type } = e.target;
+
+    let processedValue = value;
+
+    if (type === "number") {
+      processedValue = parseInt(value) || 0;
+
+      if (name === "passengers") {
+        const maxPassengers = vehicle.capacity?.passengers || 4;
+        if (processedValue > maxPassengers) {
+          processedValue = maxPassengers;
+          toast.error(
+            `Maximum passengers for this vehicle is ${maxPassengers}`,
+          );
+        }
+        if (processedValue < 1) processedValue = 1;
+      }
+
+      if (name === "duration") {
+        if (processedValue < 1) processedValue = 1;
+        if (processedValue > 168) {
+          processedValue = 168;
+          toast.error("Maximum booking duration is 7 days (168 hours)");
+        }
+      }
+    }
+
+    setFormState((prev) => ({
+      ...prev,
+      [name]: processedValue,
+    }));
   };
 
-  // Function to check time overlap
-  const checkTimeOverlap = (booking1, booking2) => {
-    const start1 = new Date(`${booking1.pickupDate}T${booking1.pickupTime}`);
-    const end1 = new Date(start1);
-    end1.setHours(end1.getHours() + booking1.duration);
-
-    const start2 = new Date(`${booking2.pickupDate}T${booking2.pickupTime}`);
-    const end2 = new Date(start2);
-    end2.setHours(end2.getHours() + booking2.duration);
-
-    // Check if time periods overlap
-    return (
-      (start1 < end2 && start2 < end1) ||
-      (start1.getTime() === start2.getTime() &&
-        end1.getTime() === end2.getTime())
-    );
+  const formatPrice = (amount) => {
+    if (!amount && amount !== 0) return "Ksh 0";
+    return new Intl.NumberFormat("en-KE", {
+      style: "currency",
+      currency: vehicle.pricing?.currency || "KES",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
   };
 
-  // Check vehicle availability
+  const formatTime = (timeString) => {
+    if (!timeString) return "";
+    const [hours, minutes] = timeString.split(":");
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? "PM" : "AM";
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+
   const checkAvailability = async () => {
+    if (!formState.pickupDate || !formState.pickupTime || !formState.duration)
+      return;
+
     setIsCheckingAvailability(true);
     setAvailabilityWarning("");
 
     try {
-      // Get existing bookings from localStorage
-      const existingBookings = JSON.parse(
-        localStorage.getItem("skydrive_all_bookings") || "[]",
-      );
-
-      // Filter bookings for this vehicle
-      const vehicleBookings = existingBookings.filter(
-        (booking) => booking.vehicleId === vehicle.id,
-      );
-
-      // Create proposed booking object
-      const proposedBooking = {
-        vehicleId: vehicle.id,
-        pickupDate: formData.pickupDate,
-        pickupTime: formData.pickupTime,
-        duration: parseInt(formData.duration),
-      };
-
-      // Check for conflicts
-      const conflicts = vehicleBookings.filter((existingBooking) =>
-        checkTimeOverlap(existingBooking, proposedBooking),
-      );
-
-      if (conflicts.length > 0) {
-        // Calculate next available time
-        const latestBooking = conflicts.reduce((latest, current) => {
-          const currentEnd = new Date(
-            `${current.pickupDate}T${current.pickupTime}`,
-          );
-          currentEnd.setHours(currentEnd.getHours() + current.duration);
-          const latestEnd = new Date(
-            `${latest.pickupDate}T${latest.pickupTime}`,
-          );
-          latestEnd.setHours(latestEnd.getHours() + latest.duration);
-          return currentEnd > latestEnd ? current : latest;
-        }, conflicts[0]);
-
-        const latestEnd = new Date(
-          `${latestBooking.pickupDate}T${latestBooking.pickupTime}`,
-        );
-        latestEnd.setHours(latestEnd.getHours() + latestBooking.duration);
-
-        // Suggest next available time (add 1 hour buffer)
-        const nextAvailable = new Date(latestEnd);
-        nextAvailable.setHours(nextAvailable.getHours() + 1);
-
+      if (vehicle.availableUnits === 0) {
         setAvailabilityWarning(
-          `⚠️ ${vehicle.name} is already booked during your selected time. Next available from ${nextAvailable.toLocaleTimeString(
-            [],
-            {
-              hour: "2-digit",
-              minute: "2-digit",
-            },
-          )} on ${nextAvailable.toLocaleDateString()}.`,
+          `⚠️ ${vehicle.name} is currently unavailable. All units are booked.`,
+        );
+        return;
+      }
+
+      const conflictResult = await checkBookingConflict(
+        vehicle._id.toString(),
+        formState.pickupDate,
+        formState.pickupTime,
+        formState.duration,
+      );
+
+      if (conflictResult.hasConflict) {
+        setAvailabilityWarning(
+          `⚠️ ${vehicle.name} is already booked during your selected time. Please choose another time.`,
         );
       } else {
-        // Check if this would exceed daily limit (max 2 bookings per day per vehicle)
-        const sameDayBookings = vehicleBookings.filter(
-          (booking) => booking.pickupDate === formData.pickupDate,
-        );
-
-        if (sameDayBookings.length >= 2) {
-          setAvailabilityWarning(
-            `ℹ️ ${vehicle.name} has limited availability on ${new Date(
-              formData.pickupDate,
-            ).toLocaleDateString()}. We recommend choosing another date for better availability.`,
-          );
-        }
+        setAvailabilityWarning("");
       }
     } catch (error) {
-      console.error("Error checking availability:", error);
+      console.error("❌ Error checking availability:", error);
+      toast.error("Could not verify availability. Please try again.");
     } finally {
       setIsCheckingAvailability(false);
     }
   };
 
-  // Prevent double booking before submission
-  const preventDoubleBooking = () => {
-    try {
-      const existingBookings = JSON.parse(
-        localStorage.getItem("skydrive_all_bookings") || "[]",
-      );
-
-      const vehicleBookings = existingBookings.filter(
-        (booking) => booking.vehicleId === vehicle.id,
-      );
-
-      const proposedBooking = {
-        vehicleId: vehicle.id,
-        pickupDate: formData.pickupDate,
-        pickupTime: formData.pickupTime,
-        duration: parseInt(formData.duration),
-      };
-
-      const conflicts = vehicleBookings.filter((existingBooking) =>
-        checkTimeOverlap(existingBooking, proposedBooking),
-      );
-
-      if (conflicts.length > 0) {
-        alert(
-          `❌ ${vehicle.name} is already booked during your selected time. Please choose another time or vehicle.`,
-        );
-        return false;
-      }
-
-      // Check daily limit
-      const sameDayBookings = vehicleBookings.filter(
-        (booking) => booking.pickupDate === formData.pickupDate,
-      );
-
-      if (sameDayBookings.length >= 2) {
-        const proceed = confirm(
-          `⚠️ ${vehicle.name} has limited availability on ${new Date(
-            formData.pickupDate,
-          ).toLocaleDateString()}. Your booking will require manual verification. Continue?`,
-        );
-        if (!proceed) return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Error in double booking prevention:", error);
-      return true; // Allow booking if check fails
-    }
-  };
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  const validateStep = () => {
-    if (step === 1) {
-      if (!formData.fullName.trim()) return "Please enter your full name";
-      if (!formData.email.trim()) return "Please enter your email";
-      if (!formData.phone.trim()) return "Please enter your phone number";
-      if (!formData.pickupDate) return "Please select pickup date";
-      if (!formData.pickupTime) return "Please select pickup time";
-    }
-    if (step === 2) {
-      if (!formData.paymentMethod) return "Please select a payment method";
-    }
-    return null;
-  };
-
-  const nextStep = () => {
-    const error = validateStep();
-    if (error) {
-      alert(error);
-      return;
-    }
-
-    if (step < 3) {
-      setStep(step + 1);
-    }
-  };
-
-  const prevStep = () => {
-    if (step > 1) {
-      setStep(step - 1);
-    }
-  };
-
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    // Validate form data
-    if (!formData.fullName || !formData.email || !formData.phone) {
-      alert("Please fill in all required fields");
-      setIsSubmitting(false);
-      return;
+    if (formState.paymentMethod === "mpesa") {
+      setIsProcessingPayment(true);
+      // The form will submit normally, but we show processing state
     }
-
-    // Check for double booking
-    if (!preventDoubleBooking()) {
-      setIsSubmitting(false);
-      return;
-    }
-
-    // Generate booking ID
-    const bookingId = `SKY-${Date.now().toString().slice(-8)}-${Math.random()
-      .toString(36)
-      .substr(2, 4)
-      .toUpperCase()}`;
-
-    // Prepare booking data to pass to confirmation
-    const newBookingData = {
-      id: bookingId,
-      vehicle: {
-        name: vehicle.name,
-        category: vehicle.category,
-        image: vehicle.thumbnail || vehicle.images?.[0] || vehicle.image,
-        capacity:
-          typeof vehicle.capacity === "object"
-            ? vehicle.capacity.passengers
-            : vehicle.capacity,
-        year: vehicle.year,
-      },
-      details: {
-        pickupDate: formData.pickupDate,
-        pickupTime: formData.pickupTime,
-        duration: parseInt(formData.duration),
-        passengers: parseInt(formData.passengers),
-        location:
-          vehicle.baseLocation?.address || "SkyDrive Premium Hub, Nairobi",
-        paymentMethod: formData.paymentMethod,
-        totalAmount: totals.total,
-        specialRequests: formData.specialRequests,
-        status: "pending_verification", // Changed to pending verification
-      },
-      customer: {
-        name: formData.fullName,
-        email: formData.email,
-        phone: formData.phone,
-      },
-      totals: {
-        base: totals.base,
-        serviceFee: totals.serviceFee,
-        insurance: totals.insurance,
-        total: totals.total,
-      },
-      host: {
-        name: "SkyDrive Premium",
-        phone: "+254 700 000 000",
-        email: "premium@skydrive.africa",
-        whatsapp: "+254 700 000 001",
-      },
-      timestamp: new Date().toISOString(),
-    };
-
-    // Set booking data in state
-    setBookingData(newBookingData);
-
-    // Save booking to all bookings list (for availability tracking)
-    const allBookings = JSON.parse(
-      localStorage.getItem("skydrive_all_bookings") || "[]",
-    );
-    localStorage.setItem(
-      "skydrive_all_bookings",
-      JSON.stringify([
-        ...allBookings,
-        {
-          vehicleId: vehicle.id,
-          vehicleName: vehicle.name,
-          pickupDate: formData.pickupDate,
-          pickupTime: formData.pickupTime,
-          duration: parseInt(formData.duration),
-          bookingId: bookingId,
-          timestamp: new Date().toISOString(),
-          status: "pending",
-        },
-      ]),
-    );
-
-    // Send notification email to admin (simulated)
-    sendAdminNotification(newBookingData);
-
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setBookingSuccess(true);
-
-      // Store booking data in localStorage as backup
-      localStorage.setItem(
-        "skydrive_last_booking",
-        JSON.stringify(newBookingData),
-      );
-
-      // Navigate with booking data
-      setTimeout(() => {
-        navigate("/confirmation", {
-          state: { booking: newBookingData },
-        });
-      }, 2000);
-    }, 2000);
   };
 
-  // Send email notification to admin
-  const sendAdminNotification = (bookingData) => {
-    const adminEmail = "bookings@skydrive.africa";
-    const subject = `NEW BOOKING: ${bookingData.id} - ${bookingData.vehicle.name}`;
-    const body = `
-URGENT: New Booking Requires Verification
-==========================================
-
-Booking ID: ${bookingData.id}
-Status: PENDING VERIFICATION
-
-VEHICLE DETAILS:
-----------------
-Vehicle: ${bookingData.vehicle.name}
-Category: ${bookingData.vehicle.category}
-Date: ${bookingData.details.pickupDate}
-Time: ${bookingData.details.pickupTime}
-Duration: ${bookingData.details.duration} hours
-
-CUSTOMER DETAILS:
------------------
-Name: ${bookingData.customer.name}
-Email: ${bookingData.customer.email}
-Phone: ${bookingData.customer.phone}
-
-PAYMENT:
---------
-Amount: ${formatPrice(bookingData.details.totalAmount)}
-Method: ${bookingData.details.paymentMethod}
-
-SPECIAL REQUESTS:
------------------
-${bookingData.details.specialRequests || "None"}
-
-ACTION REQUIRED:
-----------------
-1. Verify vehicle availability
-2. Check for double bookings
-3. Contact customer to confirm
-4. Update booking status
-
-IMPORTANT: Check existing bookings at:
-LocalStorage: skydrive_all_bookings
-`;
-
-    // Simple mailto link (in real app, use email API)
-    console.log("Admin notification:", { subject, body });
-    // Uncomment to actually send email
-    // window.location.href = `mailto:${adminEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  };
-
-  const handleCall = () => {
+  const handleCallSupport = () => {
     window.location.href = "tel:+254700000000";
   };
 
-  const handleEmail = () => {
-    window.location.href = "mailto:bookings@skydrive.africa";
+  const handleEmailSupport = () => {
+    window.location.href = "mailto:support@skydrive.com";
   };
 
-  // Helper function to get passenger capacity
-  const getPassengerCapacity = () => {
-    if (typeof vehicle.capacity === "object") {
-      return vehicle.capacity.passengers || 4;
-    }
-    return vehicle.capacity || 4;
-  };
-
-  // Generate passenger options based on capacity
-  const generatePassengerOptions = () => {
-    const capacity = getPassengerCapacity();
-    return Array.from({ length: capacity }, (_, i) => i + 1);
+  const handleBackToVehicle = () => {
+    navigate(`/fleet/${id}`);
   };
 
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
-      transition: {
-        staggerChildren: 0.1,
-        delayChildren: 0.2,
-      },
+      transition: { staggerChildren: 0.1, delayChildren: 0.2 },
     },
   };
 
@@ -516,752 +584,662 @@ LocalStorage: skydrive_all_bookings
     },
   };
 
-  // Get seat display text
-  const getSeatDisplay = () => {
-    if (typeof vehicle.capacity === "object") {
-      return `${vehicle.capacity.passengers || 4} seats`;
+  const hourlyRate = vehicle.pricing?.hourly?.rate
+    ? vehicle.pricing.hourly.rate
+    : (vehicle.pricing?.daily || vehicle.price || 0) / 24;
+
+  // Get payment method display info
+  const getPaymentMethodInfo = () => {
+    switch (formState.paymentMethod) {
+      case "mpesa":
+        return {
+          icon: <FaMobileAlt className="text-green-600 w-5 h-5" />,
+          title: "M-Pesa",
+          description: "Pay instantly via mobile money",
+          instruction: "You'll receive an STK push on your phone",
+          color: "green",
+        };
+      case "delivery":
+        return {
+          icon: <FaMoneyBillWave className="text-blue-600 w-5 h-5" />,
+          title: "Pay on Delivery",
+          description: "Cash payment when you receive the vehicle",
+          instruction: "Pay the full amount in cash at pickup",
+          color: "blue",
+        };
+      case "card":
+        return {
+          icon: <FaCreditCard className="text-amber-600 w-5 h-5" />,
+          title: "Card Payment",
+          description: "Secure online payment",
+          instruction: "You'll be redirected to secure payment gateway",
+          color: "amber",
+        };
+      default:
+        return {
+          icon: <FaCreditCard className="text-gray-600 w-5 h-5" />,
+          title: "Select Payment Method",
+          description: "",
+          instruction: "",
+          color: "gray",
+        };
     }
-    return `${vehicle.capacity || 4} seats`;
   };
 
-  // Format time for display
-  const formatDisplayTime = (time) => {
-    if (!time) return "";
-    const [hours, minutes] = time.split(":");
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const formattedHour = hour % 12 || 12;
-    return `${formattedHour}:${minutes} ${ampm}`;
-  };
+  const paymentInfo = getPaymentMethodInfo();
 
   return (
-    <div className="min-h-screen bg-linear-to-b from-amber-50 via-white to-amber-50/30 pt-15">
-      {/* Navigation */}
-      <div className="container mx-auto px-6 lg:px-8 py-8">
-        <motion.button
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          onClick={() => navigate(-1)}
-          className="group inline-flex items-center gap-4 text-gray-700 hover:text-amber-700 transition-all duration-300"
-        >
-          <div className="flex items-center justify-center w-12 h-12 rounded-full bg-linear-to-br from-amber-600/10 to-amber-500/5 group-hover:from-amber-600/20 group-hover:to-amber-500/10 transition-all duration-300 border border-amber-200 group-hover:border-amber-300">
-            <FaArrowLeft className="text-sm text-amber-600 group-hover:text-amber-700 group-hover:scale-110 transition-transform" />
-          </div>
-          <div className="text-left">
-            <span className="text-sm font-medium text-gray-500 group-hover:text-amber-600 transition-colors">
-              BACK TO
-            </span>
-            <p className="text-lg font-bold text-gray-900 group-hover:text-amber-800">
-              VEHICLE DETAILS
-            </p>
-          </div>
-        </motion.button>
-      </div>
+    <div className="min-h-screen bg-linear-to-b from-amber-50 via-white to-amber-50/30 pt-20">
+      <Toaster position="top-center" />
+
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm"
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+          <button
+            onClick={handleBackToVehicle}
+            className="inline-flex items-center gap-2 text-gray-700 hover:text-amber-700 transition-colors"
+          >
+            <FaArrowLeft className="w-5 h-5" />
+            <span className="text-sm font-medium">Back to Vehicle</span>
+          </button>
+          <h1 className="text-lg font-bold text-gray-900">
+            Book {vehicle.name}
+          </h1>
+        </div>
+      </motion.div>
 
       <motion.div
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="container mx-auto px-6 lg:px-8 pb-16"
+        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
       >
-        {/* Booking Progress */}
-        <motion.div variants={itemVariants} className="mb-12">
-          <div className="flex items-center justify-between max-w-3xl mx-auto mb-8">
-            {[1, 2, 3].map((stepNumber) => (
-              <div
-                key={stepNumber}
-                className="flex flex-col items-center relative"
-              >
-                <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
-                    step >= stepNumber
-                      ? "bg-linear-to-br from-amber-600 to-amber-500 border-amber-600 text-white"
-                      : "border-gray-300 bg-white text-gray-400"
-                  }`}
-                >
-                  {step > stepNumber ? (
-                    <FaCheck className="text-sm" />
-                  ) : (
-                    <span className="font-bold">{stepNumber}</span>
-                  )}
+        <div className="grid lg:grid-cols-3 gap-8">
+          {/* Left Column - Booking Form */}
+          <motion.div variants={itemVariants} className="lg:col-span-2">
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
+              {/* Vehicle Info */}
+              <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-200">
+                <div className="w-16 h-16 rounded-lg overflow-hidden border border-gray-300">
+                  <img
+                    src={
+                      vehicle.thumbnail ||
+                      vehicle.images?.[0] ||
+                      "/default-vehicle.jpg"
+                    }
+                    alt={vehicle.name}
+                    className="w-full h-full object-cover"
+                  />
                 </div>
-                <span
-                  className={`mt-2 text-sm font-medium transition-colors ${
-                    step >= stepNumber ? "text-amber-700" : "text-gray-500"
-                  }`}
-                >
-                  {stepNumber === 1
-                    ? "Details"
-                    : stepNumber === 2
-                      ? "Review"
-                      : "Confirm"}
-                </span>
-                {stepNumber < 3 && (
-                  <div
-                    className={`absolute top-6 left-full w-32 h-0.5 ${
-                      step > stepNumber
-                        ? "bg-linear-to-r from-amber-600 to-amber-500"
-                        : "bg-gray-300"
-                    }`}
-                  ></div>
-                )}
-              </div>
-            ))}
-          </div>
-        </motion.div>
-
-        {/* Availability Warning */}
-        {availabilityWarning && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6"
-          >
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-              <div className="flex">
-                <div className="shrink-0">
-                  <FaExclamationTriangle className="h-5 w-5 text-yellow-400" />
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm text-yellow-700">
-                    {availabilityWarning}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Main Content */}
-        <div className="grid lg:grid-cols-12 gap-10 lg:gap-16">
-          {/* Left Column: Booking Form */}
-          <motion.div variants={itemVariants} className="lg:col-span-8">
-            <div className="bg-white rounded-3xl shadow-2xl shadow-amber-900/10 border border-amber-200/50 p-8 lg:p-12">
-              {/* Vehicle Summary */}
-              <div className="mb-10 pb-8 border-b border-amber-200/50">
-                <div className="flex items-center gap-6">
-                  <div className="w-24 h-24 rounded-xl overflow-hidden border-2 border-amber-200 shadow-lg">
-                    <img
-                      src={vehicle.thumbnail || vehicle.image}
-                      alt={vehicle.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="px-3 py-1 bg-linear-to-r from-amber-600/10 to-amber-500/5 rounded-full border border-amber-200 text-xs font-bold text-amber-700 uppercase tracking-widest">
-                        {vehicle.category}
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    {vehicle.name}
+                  </h2>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-sm text-gray-600">
+                      {vehicle.category} • {vehicle.year}
+                    </span>
+                    {vehicle.instantBook && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
+                        <FaCrown className="w-3 h-3" />
+                        Instant Book
                       </span>
-                      {vehicle.isFeatured && (
-                        <div className="px-2 py-1 bg-amber-600/10 rounded-full">
-                          <FaCrown className="text-amber-600 text-xs" />
-                        </div>
-                      )}
-                    </div>
-                    <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                      {vehicle.name}
-                    </h2>
-                    <div className="flex items-center gap-4 text-sm text-gray-600">
-                      <span className="flex items-center gap-2">
-                        <FaUser className="text-amber-600" />
-                        {getSeatDisplay()}
-                      </span>
-                      <span>•</span>
-                      <span className="text-lg font-bold text-amber-600">
-                        {formatPrice(vehicle.pricing?.perHour || 0)}
-                        <span className="text-sm font-medium text-amber-500">
-                          {" "}
-                          / hour
-                        </span>
-                      </span>
-                    </div>
+                    )}
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full ${
+                        vehicle.availableUnits > 0
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {vehicle.availableUnits > 0
+                        ? `${vehicle.availableUnits} Available`
+                        : "Fully Booked"}
+                    </span>
                   </div>
                 </div>
-
-                {/* Availability Check Indicator */}
-                {isCheckingAvailability && (
-                  <div className="mt-4 flex items-center gap-2 text-sm text-amber-600">
-                    <div className="w-3 h-3 rounded-full bg-amber-600 animate-pulse"></div>
-                    Checking availability...
-                  </div>
-                )}
               </div>
 
-              {/* Step 1: Booking Details */}
-              {step === 1 && (
-                <motion.div
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="space-y-8"
-                >
+              {/* Availability Warning */}
+              {(availabilityWarning || vehicle.availableUnits === 0) && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                  <div className="flex items-start gap-3">
+                    <FaExclamationTriangle className="text-red-500 mt-0.5" />
+                    <p className="text-sm text-red-700">
+                      {vehicle.availableUnits === 0
+                        ? `⚠️ ${vehicle.name} is currently unavailable. All units are booked.`
+                        : availabilityWarning}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Checking Availability Indicator */}
+              {isCheckingAvailability && (
+                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                  <div className="flex items-center gap-3">
+                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-sm text-blue-700">
+                      Checking availability...
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Booking Form */}
+              <Form method="post" onSubmit={handleSubmit}>
+                {/* Hidden fields for calculated values */}
+                <input type="hidden" name="totalAmount" value={totals.total} />
+                <input type="hidden" name="baseAmount" value={totals.base} />
+                <input
+                  type="hidden"
+                  name="serviceFee"
+                  value={totals.serviceFee}
+                />
+                <input
+                  type="hidden"
+                  name="insuranceFee"
+                  value={totals.insurance}
+                />
+                <input type="hidden" name="vehicleName" value={vehicle.name} />
+
+                <div className="space-y-6">
+                  {/* Personal Information */}
                   <div>
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-10 h-10 rounded-xl bg-linear-to-br from-amber-600 to-amber-500 flex items-center justify-center">
-                        <FaCalendarAlt className="text-white text-lg" />
-                      </div>
-                      <h3 className="text-xl font-bold text-gray-900">
-                        Booking Details
-                      </h3>
-                    </div>
-
-                    <div className="grid md:grid-cols-2 gap-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <FaUser className="text-amber-600" />
+                      Personal Information
+                    </h3>
+                    <div className="grid md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           Full Name *
                         </label>
                         <input
                           type="text"
                           name="fullName"
-                          value={formData.fullName}
-                          onChange={handleInputChange}
-                          className="w-full px-4 py-3 text-gray-800 rounded-xl border border-gray-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all duration-300"
-                          placeholder="Enter your full name"
+                          value={formState.fullName}
+                          onChange={handleChange}
                           required
+                          className="w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                          placeholder="Your full name"
                         />
+                        {actionData?.errors?.fullName && (
+                          <p className="text-red-500 text-sm mt-1">
+                            {actionData.errors.fullName}
+                          </p>
+                        )}
                       </div>
-
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           Email Address *
                         </label>
                         <input
                           type="email"
                           name="email"
-                          value={formData.email}
-                          onChange={handleInputChange}
-                          className="w-full px-4 py-3 text-gray-800 rounded-xl border border-gray-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all duration-300"
-                          placeholder="you@example.com"
+                          value={formState.email}
+                          onChange={handleChange}
                           required
+                          className="w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                          placeholder="you@example.com"
                         />
+                        {actionData?.errors?.email && (
+                          <p className="text-red-500 text-sm mt-1">
+                            {actionData.errors.email}
+                          </p>
+                        )}
                       </div>
-
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           Phone Number *
                         </label>
                         <input
                           type="tel"
                           name="phone"
-                          value={formData.phone}
-                          onChange={handleInputChange}
-                          className="w-full px-4 py-3 text-gray-800 rounded-xl border border-gray-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all duration-300"
-                          placeholder="+254 700 000 000"
+                          value={formState.phone}
+                          onChange={handleChange}
                           required
+                          pattern="[0-9]{10,15}"
+                          className="w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                          placeholder="0712345678"
                         />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Format: 0712345678 or +254712345678
+                        </p>
+                        {actionData?.errors?.phone && (
+                          <p className="text-red-500 text-sm mt-1">
+                            {actionData.errors.phone}
+                          </p>
+                        )}
                       </div>
+                    </div>
+                  </div>
 
+                  {/* Rental Details */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <FaCalendarAlt className="text-amber-600" />
+                      Rental Details
+                    </h3>
+                    <div className="grid md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           Pickup Date *
                         </label>
                         <div className="relative">
                           <input
                             type="date"
                             name="pickupDate"
-                            value={formData.pickupDate}
-                            onChange={handleInputChange}
-                            className="w-full px-4 py-3 text-gray-800 rounded-xl border border-gray-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all duration-300"
+                            value={formState.pickupDate}
+                            onChange={handleChange}
                             required
                             min={new Date().toISOString().split("T")[0]}
+                            className="w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
                           />
-                          <FaCalendarAlt className="absolute right-4 top-1/2 transform -translate-y-1/2 text-amber-600" />
+                          <FaCalendarAlt className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
                         </div>
+                        {actionData?.errors?.pickupDate && (
+                          <p className="text-red-500 text-sm mt-1">
+                            {actionData.errors.pickupDate}
+                          </p>
+                        )}
                       </div>
-
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           Pickup Time *
                         </label>
                         <div className="relative">
                           <input
                             type="time"
                             name="pickupTime"
-                            value={formData.pickupTime}
-                            onChange={handleInputChange}
-                            className="w-full px-4 py-3 text-gray-800 rounded-xl border border-gray-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all duration-300"
+                            value={formState.pickupTime}
+                            onChange={handleChange}
                             required
+                            className="w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
                           />
-                          <FaClock className="absolute right-4 top-1/2 transform -translate-y-1/2 text-amber-600" />
+                          <FaClock className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
                         </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Duration *
-                        </label>
-
-                        <select
-                          name="duration"
-                          value={formData.duration}
-                          onChange={handleInputChange}
-                          className="w-full px-4 py-3 text-gray-800 rounded-xl border border-gray-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all duration-300"
-                          required
-                        >
-                          {/* Hours 1-24 */}
-                          {Array.from({ length: 24 }, (_, i) => i + 1).map(
-                            (hour) => (
-                              <option key={hour} value={hour}>
-                                {hour} {hour === 1 ? "hour" : "hours"}
-                              </option>
-                            ),
-                          )}
-
-                          {/* Days 1-7 */}
-                          {Array.from({ length: 7 }, (_, i) => i + 1).map(
-                            (day) => (
-                              <option key={day + 24} value={day * 24}>
-                                {day} {day === 1 ? "day" : "days"}
-                              </option>
-                            ),
-                          )}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Passengers *
-                        </label>
-                        <select
-                          name="passengers"
-                          value={formData.passengers}
-                          onChange={handleInputChange}
-                          className="w-full px-4 py-3 text-gray-800 rounded-xl border border-gray-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all duration-300"
-                          required
-                        >
-                          {generatePassengerOptions().map((num) => (
-                            <option key={num} value={num}>
-                              {num} {num === 1 ? "passenger" : "passengers"}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Special Requests (Optional)
-                        </label>
-                        <textarea
-                          name="specialRequests"
-                          value={formData.specialRequests}
-                          onChange={handleInputChange}
-                          rows="4"
-                          className="w-full px-4 py-3 text-gray-800 rounded-xl border border-gray-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all duration-300"
-                          placeholder="Any special requirements or notes..."
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Step 2: Review & Payment */}
-              {step === 2 && (
-                <motion.div
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="space-y-8"
-                >
-                  <div>
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-10 h-10 rounded-xl bg-linear-to-br from-amber-600 to-amber-500 flex items-center justify-center">
-                        <FaCreditCard className="text-white text-lg" />
-                      </div>
-                      <h3 className="text-xl font-bold text-gray-900">
-                        Review & Payment
-                      </h3>
-                    </div>
-
-                    {/* Booking Summary */}
-                    <div className="bg-linear-to-br from-amber-50 to-amber-100/30 rounded-2xl p-6 mb-8 border border-amber-200">
-                      <h4 className="text-lg font-bold text-gray-900 mb-4">
-                        Booking Summary
-                      </h4>
-                      <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-600">Vehicle</span>
-                          <span className="font-semibold text-amber-700">
-                            {vehicle.name}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-600">Pickup Date</span>
-                          <span className="font-semibold text-amber-700">
-                            {new Date(formData.pickupDate).toLocaleDateString(
-                              "en-US",
-                              {
-                                weekday: "long",
-                                year: "numeric",
-                                month: "long",
-                                day: "numeric",
-                              },
-                            )}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-600">Pickup Time</span>
-                          <span className="font-semibold text-amber-700">
-                            {formatDisplayTime(formData.pickupTime)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-600">Duration</span>
-                          <span className="font-semibold text-amber-700">
-                            {formData.duration} hours
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-600">Passengers</span>
-                          <span className="font-semibold text-amber-700">
-                            {formData.passengers}
-                          </span>
-                        </div>
-                        {formData.specialRequests && (
-                          <div className="flex justify-between items-start pt-4 border-t border-amber-200">
-                            <span className="text-gray-600">
-                              Special Requests
-                            </span>
-                            <span className="font-medium text-amber-700 text-right max-w-xs">
-                              {formData.specialRequests}
-                            </span>
-                          </div>
+                        {actionData?.errors?.pickupTime && (
+                          <p className="text-red-500 text-sm mt-1">
+                            {actionData.errors.pickupTime}
+                          </p>
                         )}
                       </div>
-
-                      {/* Manual Verification Notice */}
-                      {availabilityWarning && (
-                        <div className="mt-4 pt-4 border-t border-amber-200">
-                          <div className="flex items-start gap-2">
-                            <FaExclamationTriangle className="text-yellow-500 mt-0.5 shrink-0" />
-                            <p className="text-sm text-yellow-700">
-                              This booking requires manual verification. Our
-                              team will confirm availability within 1 hour.
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Payment Method */}
-                    <div className="mb-8">
-                      <h4 className="text-lg font-bold text-gray-900 mb-4">
-                        Payment Method
-                      </h4>
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <label
-                          className={`cursor-pointer ${
-                            formData.paymentMethod === "card"
-                              ? "ring-2 ring-amber-500"
-                              : ""
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="paymentMethod"
-                            value="card"
-                            checked={formData.paymentMethod === "card"}
-                            onChange={handleInputChange}
-                            className="hidden"
-                          />
-                          <div className="p-4 rounded-xl border-2 border-gray-300 hover:border-amber-400 transition-all duration-300">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-lg bg-linear-to-br from-amber-600 to-amber-500 flex items-center justify-center">
-                                <FaCreditCard className="text-white" />
-                              </div>
-                              <div>
-                                <p className="font-semibold text-gray-900">
-                                  Credit/Debit Card
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  Pay securely with your card
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        </label>
-
-                        <label
-                          className={`cursor-pointer ${
-                            formData.paymentMethod === "mpesa"
-                              ? "ring-2 ring-amber-500"
-                              : ""
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="paymentMethod"
-                            value="mpesa"
-                            checked={formData.paymentMethod === "mpesa"}
-                            onChange={handleInputChange}
-                            className="hidden"
-                          />
-                          <div className="p-4 rounded-xl border-2 border-gray-300 hover:border-amber-400 transition-all duration-300">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-lg bg-linear-to-br from-green-600 to-green-500 flex items-center justify-center">
-                                <FaPhone className="text-white" />
-                              </div>
-                              <div>
-                                <p className="font-semibold text-gray-900">
-                                  M-Pesa
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  Pay via mobile money
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* Card Details (if selected) */}
-                    {formData.paymentMethod === "card" && (
-                      <div className="space-y-6">
-                        <div className="grid md:grid-cols-2 gap-6">
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              Card Number
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="1234 5678 9012 3456"
-                              className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all duration-300"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              Expiry Date
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="MM/YY"
-                              className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all duration-300"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              CVV
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="123"
-                              className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all duration-300"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              Cardholder Name
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="As on card"
-                              className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all duration-300"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Security Note */}
-                    <div className="flex items-start gap-3 p-4 bg-linear-to-r from-amber-50 to-amber-100/30 rounded-xl border border-amber-200">
-                      <FaLock className="text-amber-600 mt-1" />
                       <div>
-                        <p className="font-medium text-gray-900">
-                          Secure Payment
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Duration (hours) *
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="1"
+                            max="168"
+                            name="duration"
+                            value={formState.duration}
+                            onChange={handleChange}
+                            required
+                            className="w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                          />
+                          <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                            hrs
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Hourly rate: {formatPrice(hourlyRate)}/hr
                         </p>
-                        <p className="text-sm text-gray-600 mt-1">
-                          Your payment is secured with 256-bit SSL encryption.
-                          We never store your card details.
+                        {actionData?.errors?.duration && (
+                          <p className="text-red-500 text-sm mt-1">
+                            {actionData.errors.duration}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Passengers *
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max={vehicle.capacity?.passengers || 4}
+                          name="passengers"
+                          value={formState.passengers}
+                          onChange={handleChange}
+                          required
+                          className="w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Max: {vehicle.capacity?.passengers || 4} passengers
                         </p>
+                        {actionData?.errors?.passengers && (
+                          <p className="text-red-500 text-sm mt-1">
+                            {actionData.errors.passengers}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
-                </motion.div>
-              )}
 
-              {/* Step 3: Confirmation */}
-              {step === 3 && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="text-center py-12"
-                >
-                  {bookingSuccess ? (
-                    <div>
-                      <div className="w-20 h-20 rounded-full bg-linear-to-br from-green-500 to-green-400 flex items-center justify-center mx-auto mb-6 animate-bounce">
-                        <FaCheckCircle className="text-white text-3xl" />
+                  {/* Locations */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <FaMapMarkerAlt className="text-amber-600" />
+                      Locations
+                    </h3>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Pickup Location *
+                        </label>
+                        <select
+                          name="pickupLocation"
+                          value={formState.pickupLocation}
+                          onChange={handleChange}
+                          required
+                          className="w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                        >
+                          <option value="">Select a location</option>
+                          {vehicle.serviceLocations?.map((location, idx) => (
+                            <option key={idx} value={location}>
+                              {location}
+                            </option>
+                          ))}
+                          <option value="other">
+                            Other (specify in notes)
+                          </option>
+                        </select>
                       </div>
-                      <h3 className="text-2xl font-bold text-gray-900 mb-3">
-                        Booking Submitted!
-                      </h3>
-                      <p className="text-gray-600 mb-4">
-                        Your booking ID:{" "}
-                        <span className="font-bold text-amber-700">
-                          {bookingData?.id}
-                        </span>
-                      </p>
-                      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 max-w-md mx-auto text-left">
-                        <div className="flex">
-                          <div className="shrink-0">
-                            <FaExclamationTriangle className="h-5 w-5 text-yellow-400" />
-                          </div>
-                          <div className="ml-3">
-                            <p className="text-sm text-yellow-700">
-                              <strong>Important:</strong> Your booking is
-                              pending verification. Our team will confirm
-                              availability within 1 hour and send you final
-                              confirmation.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      <p className="text-gray-600 mb-8 max-w-md mx-auto">
-                        We've sent the details to {formData.email}.
-                      </p>
-                      <div className="flex items-center justify-center gap-2 animate-pulse">
-                        <div className="w-2 h-2 bg-amber-600 rounded-full animate-ping"></div>
-                        <p className="text-sm text-gray-500">
-                          Redirecting to confirmation page...
-                        </p>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Drop-off Location *
+                        </label>
+                        <select
+                          name="dropoffLocation"
+                          value={formState.dropoffLocation}
+                          onChange={handleChange}
+                          required
+                          className="w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                        >
+                          <option value="">Select a location</option>
+                          {vehicle.serviceLocations?.map((location, idx) => (
+                            <option key={idx} value={location}>
+                              {location}
+                            </option>
+                          ))}
+                          <option value="other">
+                            Other (specify in notes)
+                          </option>
+                        </select>
                       </div>
                     </div>
-                  ) : (
-                    <div>
-                      <div className="w-20 h-20 rounded-full bg-linear-to-br from-amber-600 to-amber-500 flex items-center justify-center mx-auto mb-6">
-                        <FaShieldAlt className="text-white text-3xl" />
-                      </div>
-                      <h3 className="text-2xl font-bold text-gray-900 mb-3">
-                        Confirm Booking
-                      </h3>
-                      <p className="text-gray-600 mb-8 max-w-md mx-auto">
-                        Please review all details before confirming your
-                        booking.
-                      </p>
+                  </div>
 
-                      <div className="bg-linear-to-br from-amber-50 to-amber-100/30 rounded-2xl p-6 max-w-md mx-auto border border-amber-200">
-                        <div className="space-y-4">
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-600">Total Amount</span>
-                            <span className="text-2xl font-bold text-amber-700">
-                              {formatPrice(totals.total)}
-                            </span>
+                  {/* Payment Method */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <FaCreditCard className="text-amber-600" />
+                      Payment Method
+                    </h3>
+                    <div className="grid md:grid-cols-3 gap-4">
+                      {/* M-Pesa Option */}
+                      <label className="cursor-pointer">
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          value="mpesa"
+                          checked={formState.paymentMethod === "mpesa"}
+                          onChange={handleChange}
+                          className="hidden"
+                        />
+                        <div
+                          className={`p-4 border-2 rounded-xl transition-all ${
+                            formState.paymentMethod === "mpesa"
+                              ? "border-green-500 bg-green-50"
+                              : "border-gray-300 hover:border-green-300"
+                          }`}
+                        >
+                          <div className="flex flex-col items-center text-center gap-2">
+                            <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                              <FaMobileAlt className="text-green-600 w-6 h-6" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-gray-900">
+                                M-Pesa
+                              </p>
+                              <p className="text-xs text-gray-600 mt-1">
+                                Pay instantly
+                              </p>
+                            </div>
                           </div>
-                          <div className="flex justify-between items-center text-sm">
-                            <span className="text-gray-600">
-                              Vehicle rental
-                            </span>
-                            <span className="font-medium text-amber-700">
-                              {formatPrice(totals.base)}
-                            </span>
+                        </div>
+                      </label>
+
+                      {/* Pay on Delivery Option */}
+                      <label className="cursor-pointer">
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          value="delivery"
+                          checked={formState.paymentMethod === "delivery"}
+                          onChange={handleChange}
+                          className="hidden"
+                        />
+                        <div
+                          className={`p-4 border-2 rounded-xl transition-all ${
+                            formState.paymentMethod === "delivery"
+                              ? "border-blue-500 bg-blue-50"
+                              : "border-gray-300 hover:border-blue-300"
+                          }`}
+                        >
+                          <div className="flex flex-col items-center text-center gap-2">
+                            <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                              <FaMoneyBillWave className="text-blue-600 w-6 h-6" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-gray-900">
+                                Pay on Delivery
+                              </p>
+                              <p className="text-xs text-gray-600 mt-1">
+                                Cash at pickup
+                              </p>
+                            </div>
                           </div>
-                          <div className="flex justify-between items-center text-sm">
-                            <span className="text-gray-600">Service fee</span>
-                            <span className="font-medium text-amber-700">
-                              {formatPrice(totals.serviceFee)}
-                            </span>
+                        </div>
+                      </label>
+
+                      {/* Card Option */}
+                      <label className="cursor-pointer opacity-50">
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          value="card"
+                          disabled
+                          className="hidden"
+                        />
+                        <div className="p-4 border-2 border-gray-300 rounded-xl bg-gray-50">
+                          <div className="flex flex-col items-center text-center gap-2">
+                            <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center">
+                              <FaCreditCard className="text-gray-400 w-6 h-6" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-gray-500">
+                                Card
+                              </p>
+                              <p className="text-xs text-gray-400 mt-1">
+                                Coming soon
+                              </p>
+                            </div>
                           </div>
-                          <div className="flex justify-between items-center text-sm">
-                            <span className="text-gray-600">Insurance</span>
-                            <span className="font-medium text-amber-700 ">
-                              {formatPrice(totals.insurance)}
-                            </span>
-                          </div>
+                        </div>
+                      </label>
+                    </div>
+                    {actionData?.errors?.paymentMethod && (
+                      <p className="text-red-500 text-sm mt-2">
+                        {actionData.errors.paymentMethod}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Payment Method Info */}
+                  {formState.paymentMethod && (
+                    <div
+                      className={`p-4 bg-${paymentInfo.color}-50 border border-${paymentInfo.color}-200 rounded-xl`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {paymentInfo.icon}
+                        <div>
+                          <p className="font-medium text-gray-900">
+                            {paymentInfo.title}
+                          </p>
+                          <p className="text-sm text-gray-600 mt-1">
+                            {paymentInfo.description}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                            <FaInfoCircle className="w-3 h-3" />
+                            {paymentInfo.instruction}
+                          </p>
                         </div>
                       </div>
                     </div>
                   )}
-                </motion.div>
-              )}
 
-              {/* Navigation Buttons */}
-              <div className="flex justify-between pt-8 border-t border-amber-200/50">
-                {step > 1 && !bookingSuccess && (
-                  <button
-                    onClick={prevStep}
-                    className="px-8 py-3 border-2 border-amber-600 text-amber-600 font-semibold rounded-xl hover:bg-amber-50 transition-all duration-300"
-                  >
-                    Back
-                  </button>
-                )}
+                  {/* Special Requests */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Special Requests (Optional)
+                    </label>
+                    <textarea
+                      name="specialRequests"
+                      value={formState.specialRequests}
+                      onChange={handleChange}
+                      rows="3"
+                      className="w-full px-4 py-3 text-gray-700 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                      placeholder="Any special requirements, notes, or specific pickup instructions..."
+                    />
+                  </div>
 
-                {step < 3 && !bookingSuccess && (
-                  <button
-                    onClick={nextStep}
-                    className="ml-auto px-8 py-3 bg-linear-to-r from-amber-600 to-amber-500 text-white font-semibold rounded-xl hover:shadow-xl hover:shadow-amber-600/30 transition-all duration-300"
-                  >
-                    Continue
-                  </button>
-                )}
+                  {/* Security Note */}
+                  <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                    <FaLock className="text-amber-600 mt-1" />
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        Secure Booking
+                      </p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Your booking is secured and protected. We'll verify
+                        availability before confirming.
+                      </p>
+                    </div>
+                  </div>
 
-                {step === 3 && !bookingSuccess && (
-                  <button
-                    onClick={handleSubmit}
-                    disabled={isSubmitting}
-                    className="ml-auto px-8 py-3 bg-linear-to-r from-amber-600 to-amber-500 text-white font-semibold rounded-xl hover:shadow-xl hover:shadow-amber-600/30 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isSubmitting ? "Processing..." : "Confirm Booking"}
-                  </button>
-                )}
-              </div>
+                  {/* Terms and Conditions */}
+                  <div className="flex items-start gap-3 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                    <input
+                      type="checkbox"
+                      id="terms"
+                      required
+                      className="mt-1"
+                    />
+                    <label htmlFor="terms" className="text-sm text-gray-600">
+                      I agree to the Terms and Conditions and Privacy Policy. I
+                      understand that this booking request is subject to
+                      availability confirmation.
+                    </label>
+                  </div>
+
+                  {/* Submit Button */}
+                  <div className="pt-4">
+                    <button
+                      type="submit"
+                      disabled={
+                        isSubmitting ||
+                        isProcessingPayment ||
+                        !!availabilityWarning ||
+                        vehicle.availableUnits === 0 ||
+                        !formState.paymentMethod
+                      }
+                      className="w-full py-4 bg-linear-to-r from-amber-600 to-amber-500 text-white font-bold rounded-xl hover:shadow-lg hover:shadow-amber-600/30 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSubmitting || isProcessingPayment ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <FaSpinner className="w-4 h-4 animate-spin" />
+                          {formState.paymentMethod === "mpesa"
+                            ? "Initiating M-Pesa..."
+                            : "Processing Booking..."}
+                        </div>
+                      ) : (
+                        <>
+                          {formState.paymentMethod === "mpesa"
+                            ? "Pay with M-Pesa"
+                            : formState.paymentMethod === "delivery"
+                              ? "Confirm Booking (Pay on Delivery)"
+                              : "Complete Booking"}{" "}
+                          • {formatPrice(totals.total)}
+                          <span className="block text-xs font-normal opacity-90 mt-1">
+                            {formState.paymentMethod === "mpesa"
+                              ? "You'll receive an M-Pesa prompt on your phone"
+                              : formState.paymentMethod === "delivery"
+                                ? "Pay cash when you pick up the vehicle"
+                                : "Secure payment processing"}
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </Form>
             </div>
           </motion.div>
 
-          {/* Right Column: Price Summary & Info */}
-          <motion.div
-            variants={itemVariants}
-            className="lg:col-span-4 space-y-8"
-          >
+          {/* Right Column - Summary */}
+          <motion.div variants={itemVariants} className="space-y-6">
             {/* Price Summary */}
-            <div className="bg-linear-to-br from-amber-600 to-amber-500 rounded-3xl p-8 text-white shadow-2xl shadow-amber-600/30">
+            <div className="bg-linear-to-br from-amber-600 to-amber-500 rounded-2xl p-6 text-white shadow-lg">
               <h3 className="text-xl font-bold mb-6">Price Breakdown</h3>
 
-              <div className="space-y-4 mb-8">
-                {/* Hourly Rate */}
+              <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-amber-100">Hourly Rate</span>
-                  <span className="text-lg font-semibold">
-                    {formatPrice(
-                      vehicle.pricing?.perHour ||
-                        vehicle.pricing?.perDay / 24 ||
-                        0,
-                    )}
+                  <span className="font-semibold">
+                    {formatPrice(hourlyRate)}/hr
                   </span>
                 </div>
 
-                {/* Duration */}
                 <div className="flex justify-between items-center">
                   <span className="text-amber-100">Duration</span>
-                  <span className="font-medium">{formData.duration} hours</span>
+                  <span className="font-semibold">
+                    {formState.duration} hours
+                  </span>
                 </div>
 
-                <div className="h-px bg-amber-500/50"></div>
+                <div className="h-px bg-amber-400/50 my-2"></div>
 
-                {/* Base Price */}
                 <div className="flex justify-between items-center">
                   <span className="text-amber-100">Base Price</span>
-                  <span className="font-medium">
+                  <span className="font-semibold">
                     {formatPrice(totals.base)}
                   </span>
                 </div>
 
-                {/* Service Fee */}
                 <div className="flex justify-between items-center text-sm">
-                  <span className="text-amber-200/80">Service Fee (10%)</span>
-                  <span className="text-amber-200/80">
+                  <span className="text-amber-200/90">Service Fee (10%)</span>
+                  <span className="text-amber-200/90">
                     {formatPrice(totals.serviceFee)}
                   </span>
                 </div>
 
-                {/* Insurance */}
                 <div className="flex justify-between items-center text-sm">
-                  <span className="text-amber-200/80">Insurance (5%)</span>
-                  <span className="text-amber-200/80">
+                  <span className="text-amber-200/90">Insurance (5%)</span>
+                  <span className="text-amber-200/90">
                     {formatPrice(totals.insurance)}
                   </span>
                 </div>
 
-                <div className="h-px bg-amber-500/50"></div>
+                <div className="h-px bg-amber-400/50 my-2"></div>
 
-                {/* Total */}
                 <div className="flex justify-between items-center pt-2">
                   <span className="text-lg font-bold">Total Amount</span>
                   <span className="text-2xl font-bold">
@@ -1270,85 +1248,119 @@ LocalStorage: skydrive_all_bookings
                 </div>
               </div>
 
-              {/* Note */}
-              <div className="flex items-center gap-3 text-amber-200/90 text-sm">
-                <FaInfoCircle />
-                <span>All prices include taxes and fees</span>
+              <div className="mt-6 pt-6 border-t border-amber-400/30">
+                <div className="flex items-center gap-2 text-amber-200/90 text-sm">
+                  <FaInfoCircle className="w-4 h-4" />
+                  <span>All prices include taxes and fees</span>
+                </div>
               </div>
             </div>
 
-            {/* Pickup Information */}
-            <div className="bg-white rounded-3xl shadow-xl shadow-amber-900/10 border border-amber-200/50 p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-xl bg-linear-to-br from-amber-600 to-amber-500 flex items-center justify-center">
-                  <FaMapMarkerAlt className="text-white" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900">
-                  Pickup Details
-                </h3>
-              </div>
+            {/* Booking Summary */}
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Booking Summary
+              </h3>
 
-              <div className="space-y-4">
-                <div className="p-4 rounded-xl bg-linear-to-br from-amber-50 to-amber-100/30 border border-amber-200">
-                  <p className="text-sm text-gray-600 mb-1">Location</p>
-                  <p className="font-semibold text-gray-900">
-                    {vehicle.baseLocation?.address ||
-                      "SkyDrive Premium Hub, Nairobi"}
-                  </p>
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Vehicle</span>
+                  <span className="font-medium text-gray-900">
+                    {vehicle.name}
+                  </span>
                 </div>
 
-                <div className="p-4 rounded-xl bg-linear-to-br from-amber-50 to-amber-100/30 border border-amber-200">
-                  <p className="text-sm text-gray-600 mb-1">Scheduled Time</p>
-                  <p className="font-semibold text-gray-900">
-                    {formData.pickupDate
-                      ? new Date(formData.pickupDate).toLocaleDateString()
-                      : "Not set"}{" "}
-                    •{" "}
-                    {formData.pickupTime
-                      ? formatDisplayTime(formData.pickupTime)
-                      : "Not set"}
-                  </p>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Pickup Date</span>
+                  <span className="font-medium text-gray-900">
+                    {formState.pickupDate}
+                  </span>
                 </div>
 
-                <div className="p-4 rounded-xl bg-linear-to-br from-blue-50 to-blue-100/30 border border-blue-200">
-                  <div className="flex items-start gap-3">
-                    <FaInfoCircle className="text-blue-600 mt-1" />
-                    <div>
-                      <p className="font-medium text-gray-900">
-                        Important Note
-                      </p>
-                      <p className="text-sm text-gray-600 mt-1">
-                        Please arrive 15 minutes before your scheduled pickup
-                        time. Bring your ID and booking confirmation.
-                      </p>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Pickup Time</span>
+                  <span className="font-medium text-gray-900">
+                    {formatTime(formState.pickupTime)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Duration</span>
+                  <span className="font-medium text-gray-900">
+                    {formState.duration} hours
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Passengers</span>
+                  <span className="font-medium text-gray-900">
+                    {formState.passengers}
+                  </span>
+                </div>
+
+                <div className="pt-3 border-t border-gray-200">
+                  <p className="text-sm text-gray-600 mb-2">Payment Method</p>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`w-8 h-8 rounded-lg bg-${paymentInfo.color}-100 flex items-center justify-center`}
+                    >
+                      {paymentInfo.icon}
                     </div>
+                    <span className="font-medium text-gray-900">
+                      {paymentInfo.title}
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Support */}
-            <div className="bg-white rounded-3xl shadow-xl shadow-amber-900/10 border border-amber-200/50 p-8">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">
+            {/* Availability Badge */}
+            <div className="mt-2 flex items-center gap-2">
+              <span
+                className={`text-xs px-2 py-1 rounded-full ${
+                  vehicle.availableUnits > 3
+                    ? "bg-emerald-100 text-emerald-700"
+                    : vehicle.availableUnits > 0
+                      ? "bg-amber-100 text-amber-700"
+                      : "bg-red-100 text-red-700"
+                }`}
+              >
+                {vehicle.availableUnits > 0
+                  ? `${vehicle.availableUnits} unit${vehicle.availableUnits > 1 ? "s" : ""} available`
+                  : "Fully booked"}
+              </span>
+
+              {vehicle.availableUnits <= 2 && vehicle.availableUnits > 0 && (
+                <span className="text-xs text-amber-600 animate-pulse">
+                  ⚡ Only {vehicle.availableUnits} left!
+                </span>
+              )}
+            </div>
+
+            {/* Support Card */}
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 Need Help?
               </h3>
-              <p className="text-gray-600 mb-6">
-                Our team is available 24/7 to assist with your booking.
+
+              <p className="text-gray-600 mb-4">
+                Our support team is here to assist you 24/7.
               </p>
 
               <div className="space-y-3">
                 <button
-                  onClick={handleCall}
-                  className="w-full flex items-center justify-center gap-3 px-4 py-3 border-2 border-amber-600 text-amber-600 font-semibold rounded-xl hover:bg-amber-50 transition-all duration-300"
+                  onClick={handleCallSupport}
+                  className="w-full flex items-center justify-center gap-3 px-4 py-3 border-2 border-amber-600 text-amber-600 font-semibold rounded-xl hover:bg-amber-50 transition-all"
                 >
-                  <FaPhone className="text-base" />
+                  <FaPhone className="w-4 h-4" />
                   Call Support
                 </button>
+
                 <button
-                  onClick={handleEmail}
-                  className="w-full flex items-center justify-center gap-3 px-4 py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-all duration-300"
+                  onClick={handleEmailSupport}
+                  className="w-full flex items-center justify-center gap-3 px-4 py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-all"
                 >
-                  <FaEnvelope className="text-base" />
+                  <FaEnvelope className="w-4 h-4" />
                   Email Support
                 </button>
               </div>

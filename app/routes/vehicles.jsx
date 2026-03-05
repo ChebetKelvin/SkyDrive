@@ -1,35 +1,58 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { FaStar, FaArrowRight, FaFilter, FaSort } from "react-icons/fa";
-import { Link } from "react-router";
-import vehiclesData from "../vehicles.js";
+import { Link, useLoaderData } from "react-router";
+import { getVehicles } from "../models/vehicles";
+
+export async function loader() {
+  try {
+    const vehicles = await getVehicles();
+
+    // Convert ObjectId → string (important for React + URLs)
+    const vehicleData = vehicles.map((vehicle) => ({
+      ...vehicle,
+      _id: vehicle._id.toString(),
+    }));
+
+    return vehicleData;
+  } catch (error) {
+    console.error("Failed to load vehicles:", error);
+    throw new Response("Failed to load vehicles", { status: 500 });
+  }
+}
 
 export default function Vehicles() {
+  let vehiclesData = useLoaderData();
   const [selectedType, setSelectedType] = useState("all");
   const [sortBy, setSortBy] = useState("rating");
 
+  // Updated vehicle types based on new categories
   const vehicleTypes = [
     { value: "all", label: "All Vehicles" },
-    { value: "sedan", label: "Sedans" },
+    { value: "executive_sedan", label: "Executive Sedans" },
     { value: "suv", label: "SUVs" },
+    { value: "pickup", label: "Pickup Trucks" },
+    { value: "van", label: "Vans" },
+    { value: "hatchback", label: "Hatchbacks" },
     { value: "helicopter", label: "Helicopters" },
+    // Add more categories as needed based on your data
   ];
 
-  // Filter and sort vehicles
+  // Filter and sort vehicles - updated for new data structure
   const filteredVehicles = useMemo(() => {
     let filtered = vehiclesData;
 
-    // Apply type filter
+    // Apply type filter - using category now
     if (selectedType !== "all") {
-      filtered = filtered.filter((v) => v.type === selectedType);
+      filtered = filtered.filter((v) => v.category === selectedType);
     }
 
     // Apply sorting
     const sorted = [...filtered];
     if (sortBy === "price-low") {
-      sorted.sort((a, b) => a.pricing.perHour - b.pricing.perHour);
+      sorted.sort((a, b) => a.pricing.hourly.rate - b.pricing.hourly.rate);
     } else if (sortBy === "price-high") {
-      sorted.sort((a, b) => b.pricing.perHour - a.pricing.perHour);
+      sorted.sort((a, b) => b.pricing.hourly.rate - a.pricing.hourly.rate);
     } else if (sortBy === "rating") {
       sorted.sort((a, b) => b.rating - a.rating);
     }
@@ -68,6 +91,14 @@ export default function Vehicles() {
       y: -4,
       transition: { duration: 0.3 },
     },
+  };
+
+  // Helper function to format category label
+  const formatCategory = (category) => {
+    return category
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
   };
 
   return (
@@ -170,136 +201,80 @@ export default function Vehicles() {
           >
             {filteredVehicles.map((vehicle) => (
               <motion.div
-                key={vehicle.id}
+                key={vehicle._id}
                 variants={cardVariants}
                 whileHover="hover"
                 className="group cursor-pointer"
               >
-                <div className="bg-white rounded-lg border border-slate-100 hover:border-slate-200 overflow-hidden transition-all duration-300 h-full flex flex-col">
-                  {/* Image Container */}
-                  <div className="relative h-80 overflow-hidden bg-slate-100">
-                    <img
-                      src={vehicle.thumbnail}
-                      alt={vehicle.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
+                <Link to={`/fleet/${vehicle._id}`} className="block">
+                  <div className="bg-white rounded-lg overflow-hidden border border-slate-100 hover:border-slate-200 transition-all duration-300">
+                    {/* Image Container */}
+                    <div className="relative h-80 overflow-hidden bg-slate-100">
+                      <img
+                        src={vehicle.thumbnail}
+                        alt={vehicle.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
 
-                    {/* Featured Badge */}
-                    {vehicle.isFeatured && (
-                      <div className="absolute top-4 left-4">
-                        <span className="inline-block px-3 py-1 bg-amber-600 text-white text-xs font-semibold uppercase tracking-widest rounded-full">
-                          Featured
+                      {/* Rating Badge - Only keep rating, remove review count */}
+                      <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm">
+                        <FaStar className="text-amber-400 text-xs" />
+                        <span className="text-sm font-semibold text-slate-900">
+                          {vehicle.rating}
                         </span>
                       </div>
-                    )}
 
-                    {/* Rating Badge */}
-                    <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm">
-                      <FaStar className="text-amber-400 text-xs" />
-                      <span className="text-sm font-semibold text-slate-900">
-                        {vehicle.rating}
-                      </span>
-                      <span className="text-xs text-slate-500 ml-1">
-                        ({vehicle.totalReviews})
-                      </span>
+                      {/* Subtle overlay on hover */}
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors duration-300" />
                     </div>
 
-                    {/* Hover Overlay */}
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors duration-300" />
-                  </div>
-
-                  {/* Content */}
-                  <div className="p-6 flex flex-col grow">
-                    {/* Category */}
-                    <p className="text-xs font-medium text-amber-600 uppercase tracking-widest mb-2">
-                      {vehicle.category}
-                    </p>
-
-                    {/* Name */}
-                    <h3 className="text-xl font-light text-slate-900 mb-2 leading-tight group-hover:text-amber-600 transition-colors duration-300">
-                      {vehicle.name}
-                    </h3>
-
-                    {/* Year & Color */}
-                    <p className="text-xs text-slate-500 mb-4">
-                      {vehicle.year} • {vehicle.color}
-                    </p>
-
-                    {/* Description */}
-                    <p className="text-sm text-slate-600 mb-4 line-clamp-2 grow">
-                      {vehicle.description}
-                    </p>
-
-                    {/* Tags */}
-                    <div className="flex flex-wrap gap-2 mb-5 pb-5 border-b border-slate-100">
-                      {vehicle.tags.slice(0, 3).map((tag, idx) => (
-                        <span
-                          key={idx}
-                          className="text-xs text-slate-600 bg-slate-50 px-2 py-1 rounded"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                      {vehicle.tags.length > 3 && (
-                        <span className="text-xs text-slate-500 px-2 py-1">
-                          +{vehicle.tags.length - 3}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Stats */}
-                    <div className="grid grid-cols-2 gap-4 mb-5">
-                      <div>
-                        <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">
-                          Capacity
-                        </p>
-                        <p className="text-lg font-semibold text-slate-900">
-                          {vehicle.capacity.passengers} Seats
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">
-                          Trips
-                        </p>
-                        <p className="text-lg font-semibold text-slate-900">
-                          {vehicle.trips.toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Pricing */}
-                    <div className="mb-5 pb-5 border-b border-slate-100">
-                      <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">
-                        Pricing
+                    {/* Content - Simplified */}
+                    <div className="p-6">
+                      {/* Category */}
+                      <p className="text-xs font-medium text-amber-600 uppercase tracking-widest mb-2">
+                        {formatCategory(vehicle.category)}
                       </p>
-                      <div className="flex items-baseline gap-4">
+
+                      {/* Name */}
+                      <h3 className="text-xl font-light text-slate-900 mb-4 leading-tight group-hover:text-amber-600 transition-colors duration-300">
+                        {vehicle.name}
+                      </h3>
+
+                      {/* Stats Row - Clean and minimal */}
+                      <div className="flex items-center justify-between mb-5 pb-5 border-b border-slate-100">
                         <div>
-                          <p className="text-xs text-slate-600">Per Hour</p>
+                          <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">
+                            From
+                          </p>
                           <p className="text-lg font-semibold text-slate-900">
                             {vehicle.pricing.currency}{" "}
-                            {vehicle.pricing.perHour.toLocaleString()}
+                            {vehicle.pricing.hourly.rate.toLocaleString()}
+                            <span className="text-xs font-normal text-slate-500">
+                              /hr
+                            </span>
                           </p>
                         </div>
-                        <div>
-                          <p className="text-xs text-slate-600">Per Day</p>
+                        <div className="text-right">
+                          <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">
+                            Capacity
+                          </p>
                           <p className="text-lg font-semibold text-slate-900">
-                            {vehicle.pricing.currency}{" "}
-                            {vehicle.pricing.perDay.toLocaleString()}
+                            {vehicle.capacity.passengers}{" "}
+                            <span className="text-xs font-normal text-slate-500">
+                              seats
+                            </span>
                           </p>
                         </div>
                       </div>
-                    </div>
 
-                    {/* CTA */}
-                    <Link
-                      to={`/fleet/${vehicle.id}`}
-                      className="inline-flex items-center gap-2 text-sm font-medium text-amber-600 hover:text-amber-700 transition-colors duration-300 group/link"
-                    >
-                      View Details
-                      <FaArrowRight className="text-xs group-hover/link:translate-x-1 transition-transform duration-300" />
-                    </Link>
+                      {/* CTA - Subtle arrow */}
+                      <div className="inline-flex items-center gap-2 text-sm font-medium text-amber-600 hover:text-amber-700 transition-colors duration-300 group/link">
+                        View Details
+                        <FaArrowRight className="text-xs group-hover/link:translate-x-1 transition-transform duration-300" />
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </Link>
               </motion.div>
             ))}
           </motion.div>

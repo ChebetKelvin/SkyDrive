@@ -1,55 +1,102 @@
 import { useState } from "react";
-import { useParams, useNavigate } from "react-router";
 import { motion } from "framer-motion";
 import {
-  FaStar,
-  FaArrowLeft,
-  FaArrowRight,
-  FaHeart,
-  FaShare,
-  FaCheck,
-  FaUsers,
-  FaGasPump,
-  FaCog,
-  FaShieldAlt,
-  FaMapMarkerAlt,
-  FaPhone,
-  FaEnvelope,
-  FaCalendarAlt,
-  FaCrown,
-  FaCar,
-  FaHelicopter,
-  FaTachometerAlt,
-  FaPalette,
-  FaCarSide,
-  FaDoorOpen,
-  FaSuitcaseRolling,
-} from "react-icons/fa";
+  Star,
+  Heart,
+  Share2,
+  ChevronLeft,
+  ChevronRight,
+  MapPin,
+  Phone,
+  Mail,
+  Calendar,
+  Users,
+  Luggage,
+  Zap,
+  Shield,
+  Wifi,
+  Wind,
+  Music,
+  ChevronDown,
+  Check,
+  Clock,
+} from "lucide-react";
+import { Button } from "../components/Button";
+import { useLoaderData, useNavigate } from "react-router";
+import { getVehicleById } from "../models/vehicles";
+import toast, { Toaster } from "react-hot-toast";
 
-import vehiclesData from "../vehicles";
+export async function loader({ params }) {
+  const { id } = params;
+
+  const vehicle = await getVehicleById(id);
+  if (!vehicle) throw new Response("Vehicle Not Found", { status: 404 });
+
+  const transformedVehicle = {
+    ...vehicle,
+    _id: vehicle._id?.toString(),
+    images: vehicle.images || [vehicle.thumbnail].filter(Boolean),
+    features: vehicle.features || [],
+    serviceLocations: vehicle.serviceLocations || [],
+    specifications: vehicle.specifications || {},
+    reviews: vehicle.reviews || vehicle.reviewCount || 0,
+    pricing: {
+      hourly: vehicle.pricing?.hourly || null,
+      daily: vehicle.pricing?.daily || 0,
+      weekly:
+        vehicle.pricing?.weekly ||
+        (vehicle.pricing?.daily ? vehicle.pricing.daily * 7 * 0.9 : 0),
+      monthly:
+        vehicle.pricing?.monthly ||
+        (vehicle.pricing?.daily ? vehicle.pricing.daily * 30 * 0.8 : 0),
+      currency: vehicle.pricing?.currency || "KES",
+    },
+    capacity: {
+      passengers: vehicle.capacity?.passengers || 4,
+      luggage: vehicle.capacity?.luggage || 2,
+    },
+    description:
+      vehicle.description ||
+      `Experience the comfort and reliability of the ${vehicle.name}. This vehicle offers excellent fuel efficiency and modern features for a pleasant driving experience.`,
+  };
+
+  return { vehicle: transformedVehicle };
+}
 
 export default function VehicleDetail() {
-  const { id } = useParams();
+  const { vehicle } = useLoaderData();
   const navigate = useNavigate();
   const [selectedImage, setSelectedImage] = useState(0);
-  const [activeTab, setActiveTab] = useState("overview");
   const [isFavorite, setIsFavorite] = useState(false);
+  const [expandedSection, setExpandedSection] = useState(null);
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [showInquiryModal, setShowInquiryModal] = useState(false);
+  const [contactForm, setContactForm] = useState({
+    name: "",
+    phone: "",
+    message: "",
+  });
+  const [inquiryForm, setInquiryForm] = useState({
+    name: "",
+    email: "",
+    message: "",
+    dates: "",
+  });
 
-  // Find vehicle by ID
-  const vehicle =
-    vehiclesData.find((v) => v.id === parseInt(id || "1")) || vehiclesData[0];
+  const images =
+    vehicle?.images?.length > 0
+      ? vehicle.images
+      : vehicle?.thumbnail
+        ? [vehicle.thumbnail]
+        : [
+            "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=800&auto=format&fit=crop",
+          ];
 
-  const images = vehicle.images || [vehicle.image];
-
-  // Animation variants
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
-      transition: {
-        staggerChildren: 0.08,
-        delayChildren: 0.1,
-      },
+      transition: { staggerChildren: 0.08, delayChildren: 0.1 },
     },
   };
 
@@ -58,101 +105,501 @@ export default function VehicleDetail() {
     visible: {
       opacity: 1,
       y: 0,
-      transition: {
-        duration: 0.5,
-        ease: [0.23, 1, 0.32, 1],
-      },
+      transition: { duration: 0.5 },
     },
   };
 
-  // Format price function
   const formatPrice = (amount) => {
+    if (!amount) return "Ksh 0";
     return new Intl.NumberFormat("en-KE", {
       style: "currency",
-      currency: "KES",
+      currency: vehicle.pricing?.currency || "KES",
       minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(amount);
   };
 
-  const handleBookNow = () => {
-    navigate(`/book/${vehicle.id}`);
+  const toggleSection = (section) => {
+    setExpandedSection(expandedSection === section ? null : section);
   };
 
-  const handleShare = () => {
-    if (navigator.share) {
-      navigator.share({
-        title: vehicle.name,
-        text: `Check out this ${vehicle.category} on SkyDrive Africa`,
-        url: window.location.href,
-      });
+  const featureIcons = {
+    WiFi: <Wifi className="w-4 h-4" />,
+    "Air Conditioning": <Wind className="w-4 h-4" />,
+    "Climate Control": <Wind className="w-4 h-4" />,
+    Radio: <Music className="w-4 h-4" />,
+    "Bluetooth Connectivity": <Music className="w-4 h-4" />,
+    "Luxury Audio": <Music className="w-4 h-4" />,
+    "Safety Features": <Shield className="w-4 h-4" />,
+    "Heated Seats": <Zap className="w-4 h-4" />,
+    "Navigation System": <MapPin className="w-4 h-4" />,
+  };
+
+  const handleBackToFleet = () => {
+    navigate("/fleet");
+  };
+
+  const handleFavorite = () => {
+    setIsFavorite(!isFavorite);
+    if (!isFavorite) {
+      toast.success("Added to favorites!");
+      localStorage.setItem(`favorite_${vehicle._id}`, "true");
     } else {
-      navigator.clipboard.writeText(window.location.href);
-      alert("Link copied to clipboard!");
+      toast("Removed from favorites");
+      localStorage.removeItem(`favorite_${vehicle._id}`);
     }
   };
 
-  const handleCall = () => {
-    window.location.href = "tel:+254700000000";
+  const handleShare = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: vehicle.name,
+          text: `Check out this ${vehicle.name} on SkyDrive!`,
+          url: window.location.href,
+        });
+        toast.success("Shared successfully!");
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        toast.success("Link copied to clipboard!");
+      }
+    } catch (error) {
+      if (error.name !== "AbortError") {
+        toast.error("Failed to share. Please try again.");
+      }
+    }
   };
 
-  const handleEmail = () => {
-    window.location.href = "mailto:bookings@skydrive.africa";
+  const handleBookNow = () => {
+    if (vehicle.availableUnits === 0) {
+      toast.error("This vehicle is currently unavailable for booking");
+      return;
+    }
+
+    toast.success("Redirecting to booking...");
+    navigate(`/booking/${vehicle._id}`);
+    setTimeout(() => {
+      toast.custom((t) => (
+        <div className="bg-white p-6 rounded-xl shadow-2xl border border-gray-200">
+          <h3 className="font-bold text-lg text-gray-900">
+            Booking Process Started
+          </h3>
+          <p className="text-gray-600 mt-2">
+            We'll guide you through the booking process for:
+          </p>
+          <p className="font-semibold text-amber-700 mt-1">{vehicle.name}</p>
+          <div className="mt-4 flex gap-2">
+            <Button
+              onClick={() => {
+                toast.dismiss(t.id);
+                toast.success("Booking confirmed!");
+              }}
+              className="bg-amber-700 hover:bg-amber-800"
+            >
+              Confirm Booking
+            </Button>
+            <Button onClick={() => toast.dismiss(t.id)} variant="outline">
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ));
+    }, 1000);
   };
+
+  const handleContact = () => {
+    setShowContactModal(true);
+  };
+
+  const handleInquiry = () => {
+    setShowInquiryModal(true);
+  };
+
+  const handleContactSubmit = (e) => {
+    e.preventDefault();
+    toast.success("Contact request sent! We'll call you soon.");
+    setShowContactModal(false);
+    setContactForm({ name: "", phone: "", message: "" });
+  };
+
+  const handleInquirySubmit = (e) => {
+    e.preventDefault();
+    toast.success("Inquiry submitted! We'll email you within 24 hours.");
+    setShowInquiryModal(false);
+    setInquiryForm({ name: "", email: "", message: "", dates: "" });
+  };
+
+  const handleCallNow = () => {
+    window.location.href = "tel:+254712345678";
+  };
+
+  const handleEmailNow = () => {
+    window.location.href =
+      "mailto:info@skydrive.com?subject=Inquiry about " +
+      encodeURIComponent(vehicle.name);
+  };
+
+  if (!vehicle) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900">
+            Vehicle not found
+          </h1>
+          <p className="text-gray-600 mt-2">
+            The vehicle you're looking for does not exist.
+          </p>
+          <Button
+            onClick={() => navigate("/vehicles")}
+            className="mt-4 bg-amber-700 hover:bg-amber-800"
+          >
+            Browse Fleet
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-linear-to-b from-amber-400 via-white to-amber-100/40 pt-15">
-      {/* Back Button */}
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <motion.button
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          onClick={() => navigate(-1)}
-          className="group inline-flex items-center gap-2 text-amber-700 hover:text-amber-800 transition-all duration-300"
-        >
-          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 group-hover:bg-amber-200 transition-all duration-300">
-            <FaArrowLeft className="text-sm text-amber-600" />
-          </div>
-          <span className="text-sm font-medium text-amber-700 group-hover:text-amber-800">
-            Back to Fleet
-          </span>
-        </motion.button>
-      </div>
+    <div className="min-h-screen bg-gray-50 pt-20">
+      <Toaster
+        position="top-center"
+        toastOptions={{
+          duration: 4000,
+          style: {
+            background: "#fff",
+            color: "#111827",
+            border: "1px solid #e5e7eb",
+          },
+        }}
+      />
 
+      {/* Header Navigation */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm"
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+          <button
+            onClick={handleBackToFleet}
+            className="inline-flex items-center gap-2 text-gray-700 hover:text-amber-700 transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+            <span className="text-sm font-medium">Back to Fleet</span>
+          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleFavorite}
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              <Heart
+                className={`w-5 h-5 transition-colors ${
+                  isFavorite ? "fill-amber-700 text-amber-700" : "text-gray-600"
+                }`}
+              />
+            </button>
+            <button
+              onClick={handleShare}
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              <Share2 className="w-5 h-5 text-gray-600" />
+            </button>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Contact Modal */}
+      {showContactModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl p-6 max-w-md w-full relative"
+          >
+            <button
+              onClick={() => setShowContactModal(false)}
+              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Contact Us</h3>
+            <form onSubmit={handleContactSubmit}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Your Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    className="w-full px-3 py-2 text-gray-700 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    value={contactForm.name}
+                    onChange={(e) =>
+                      setContactForm({ ...contactForm, name: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    className="w-full px-3 py-2 text-gray-700 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    value={contactForm.phone}
+                    onChange={(e) =>
+                      setContactForm({ ...contactForm, phone: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Message (Optional)
+                  </label>
+                  <textarea
+                    className="w-full px-3 py-2 text-gray-700 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    rows="3"
+                    value={contactForm.message}
+                    onChange={(e) =>
+                      setContactForm({
+                        ...contactForm,
+                        message: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <Button
+                  type="submit"
+                  className="flex-1 bg-amber-700 hover:bg-amber-800"
+                >
+                  <Phone className="w-4 h-4 mr-2" />
+                  Request Call
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowContactModal(false)}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              </div>
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={handleCallNow}
+                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold transition-colors"
+                >
+                  <Phone className="w-4 h-4 inline mr-2" />
+                  Call Now: +254 712 345 678
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Inquiry Modal */}
+      {showInquiryModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowInquiryModal(false);
+            }
+          }}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl p-6 max-w-md w-full relative"
+          >
+            <button
+              onClick={() => setShowInquiryModal(false)}
+              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
+            <h3 className="text-xl font-bold text-gray-900 mb-4">
+              Send Inquiry
+            </h3>
+            <form onSubmit={handleInquirySubmit}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Your Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    className="w-full px-3 py-2 text-gray-700 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    value={inquiryForm.name}
+                    onChange={(e) =>
+                      setInquiryForm({ ...inquiryForm, name: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    className="w-full px-3 py-2 text-gray-700 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    value={inquiryForm.email}
+                    onChange={(e) =>
+                      setInquiryForm({ ...inquiryForm, email: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Preferred Dates
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., May 15-20, 2024"
+                    className="w-full px-3 py-2 text-gray-700 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    value={inquiryForm.dates}
+                    onChange={(e) =>
+                      setInquiryForm({ ...inquiryForm, dates: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Your Message
+                  </label>
+                  <textarea
+                    required
+                    className="w-full px-3 py-2 text-gray-700 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    rows="3"
+                    placeholder="Tell us about your rental needs..."
+                    value={inquiryForm.message}
+                    onChange={(e) =>
+                      setInquiryForm({
+                        ...inquiryForm,
+                        message: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <Button
+                  type="submit"
+                  className="flex-1 bg-amber-700 hover:bg-amber-800"
+                >
+                  <Mail className="w-4 h-4 mr-2" />
+                  Send Inquiry
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowInquiryModal(false)}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              </div>
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={handleEmailNow}
+                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold transition-colors"
+                >
+                  <Mail className="w-4 h-4 inline mr-2" />
+                  Email Directly: info@skydrive.com
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Main Content */}
       <motion.div
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="container mx-auto px-4 sm:px-6 lg:px-8 pb-16"
+        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
       >
-        {/* Main Content Grid */}
-        <div className="grid lg:grid-cols-3 gap-8 lg:gap-12 mb-16">
+        {/* Image Gallery & Header Section */}
+        <div className="grid lg:grid-cols-3 gap-8 mb-8">
           {/* Image Gallery - Left Column */}
           <motion.div
             variants={itemVariants}
-            className="lg:col-span-2 space-y-6"
+            className="lg:col-span-2 space-y-4"
           >
             {/* Main Image Container */}
-            <div className="relative rounded-3xl overflow-hidden bg-linear-to-br from-amber-100/50 to-amber-200/20 h-125 lg:h-150 shadow-2xl shadow-amber-900/5">
-              {/* Main Image */}
-              {images[selectedImage] ? (
+            <div className="relative bg-white rounded-2xl overflow-hidden shadow-md border border-gray-200 aspect-video">
+              {images?.[selectedImage] ? (
                 <img
                   src={images[selectedImage]}
                   alt={vehicle.name}
-                  className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
+                  className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-amber-50 to-amber-100">
-                  <div className="text-center">
-                    <div className="text-7xl mb-4 text-amber-300">
-                      {vehicle.type === "helicopter" ? "🚁" : "🚗"}
-                    </div>
-                    <p className="text-amber-700 font-light">{vehicle.name}</p>
-                  </div>
+                <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-gray-100 to-gray-200">
+                  <span className="text-4xl">🚗</span>
                 </div>
               )}
 
+              {/* Badges */}
+              <div className="absolute top-4 left-4 right-4 flex justify-between items-start">
+                {vehicle.instantBook && (
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-full text-xs font-semibold shadow-lg">
+                    <Check className="w-3 h-3" />
+                    Instant Book
+                  </div>
+                )}
+                <div
+                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg ${
+                    vehicle.availableUnits > 0
+                      ? "bg-emerald-600 text-white"
+                      : "bg-red-600 text-white"
+                  }`}
+                >
+                  <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                  {vehicle.availableUnits > 0 ? "Available" : "Booked"}
+                </div>
+              </div>
+
               {/* Image Navigation */}
-              {images.length > 1 && (
+              {images && images.length > 1 && (
                 <>
                   <button
                     onClick={() =>
@@ -160,9 +607,9 @@ export default function VehicleDetail() {
                         prev === 0 ? images.length - 1 : prev - 1,
                       )
                     }
-                    className="absolute left-6 top-1/2 transform -translate-y-1/2 p-3 rounded-full bg-white/90 hover:bg-white text-amber-800 transition-all duration-300 shadow-xl shadow-amber-900/10 hover:shadow-2xl hover:shadow-amber-900/20 group"
+                    className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-white/90 hover:bg-white shadow-lg transition-all"
                   >
-                    <FaArrowLeft className="text-lg transition-transform group-hover:-translate-x-0.5" />
+                    <ChevronLeft className="w-5 h-5 text-gray-800" />
                   </button>
                   <button
                     onClick={() =>
@@ -170,49 +617,30 @@ export default function VehicleDetail() {
                         prev === images.length - 1 ? 0 : prev + 1,
                       )
                     }
-                    className="absolute right-6 top-1/2 transform -translate-y-1/2 p-3 rounded-full bg-white/90 hover:bg-white text-amber-800 transition-all duration-300 shadow-xl shadow-amber-900/10 hover:shadow-2xl hover:shadow-amber-900/20 group"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-white/90 hover:bg-white shadow-lg transition-all"
                   >
-                    <FaArrowRight className="text-lg transition-transform group-hover:translate-x-0.5" />
+                    <ChevronRight className="w-5 h-5 text-gray-800" />
                   </button>
                 </>
-              )}
-
-              {/* Image Counter */}
-              {images.length > 1 && (
-                <div className="absolute bottom-6 right-6 bg-linear-to-r from-amber-800/90 to-amber-900/90 text-white px-4 py-2 rounded-full text-sm font-medium backdrop-blur-sm shadow-lg">
-                  {selectedImage + 1} / {images.length}
-                </div>
-              )}
-
-              {/* Featured Badge */}
-              {vehicle.isFeatured && (
-                <div className="absolute top-6 left-6">
-                  <div className="flex items-center gap-2 px-4 py-2.5 bg-linear-to-r from-amber-600 to-amber-700 text-white rounded-full shadow-xl shadow-amber-700/30">
-                    <FaCrown className="text-amber-200" />
-                    <span className="text-sm font-semibold tracking-wide">
-                      Premium Featured
-                    </span>
-                  </div>
-                </div>
               )}
             </div>
 
             {/* Thumbnail Strip */}
-            {images.length > 1 && (
-              <div className="flex gap-3 overflow-x-auto pb-3 px-1">
+            {images && images.length > 1 && (
+              <div className="flex gap-3 overflow-x-auto pb-2">
                 {images.map((img, idx) => (
                   <button
                     key={idx}
                     onClick={() => setSelectedImage(idx)}
-                    className={`shrink-0 w-24 h-24 rounded-xl overflow-hidden border-3 transition-all duration-300 transform hover:scale-105 ${
+                    className={`shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-all ${
                       selectedImage === idx
-                        ? "border-amber-600 shadow-lg shadow-amber-600/30"
-                        : "border-transparent opacity-70 hover:opacity-100 hover:border-amber-300"
+                        ? "border-amber-700 shadow-md"
+                        : "border-gray-200 hover:border-gray-300"
                     }`}
                   >
                     <img
                       src={img}
-                      alt={`${vehicle.name} view ${idx + 1}`}
+                      alt={`Thumbnail ${idx + 1}`}
                       className="w-full h-full object-cover"
                     />
                   </button>
@@ -221,516 +649,346 @@ export default function VehicleDetail() {
             )}
           </motion.div>
 
-          {/* Vehicle Info & Booking - Right Column */}
-          <motion.div variants={itemVariants} className="space-y-8">
-            {/* Header */}
-            <div className="bg-white rounded-3xl p-6 shadow-xl shadow-amber-900/5 border border-amber-100">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="px-3 py-1 bg-linear-to-r from-amber-100 to-amber-50 rounded-full border border-amber-200">
-                      <span className="text-xs font-semibold text-amber-700 uppercase tracking-wider">
-                        {vehicle.category}
-                      </span>
-                    </div>
-                    {vehicle.isFeatured && (
-                      <div className="px-2 py-1 bg-amber-600/10 rounded-full">
-                        <FaCrown className="text-amber-600 text-xs" />
-                      </div>
-                    )}
-                  </div>
-                  <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-3 tracking-tight">
-                    {vehicle.name}
+          {/* Header Card - Right Column */}
+          <motion.div variants={itemVariants} className="space-y-4">
+            {/* Vehicle Info Card */}
+            <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-200">
+              <div className="space-y-4">
+                {/* Title & Rating */}
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900 mb-2">
+                    {vehicle.name || "Unnamed Vehicle"}
                   </h1>
-                  <p className="text-amber-700 font-light text-lg mb-4">
-                    Luxury {vehicle.type} ∙ {vehicle.year || 2024}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setIsFavorite(!isFavorite)}
-                  className="p-3 rounded-full hover:bg-red-50 transition-all duration-300 transform hover:scale-110 ml-2"
-                >
-                  <FaHeart
-                    className={`text-2xl transition-all duration-300 ${
-                      isFavorite
-                        ? "text-red-500 fill-red-500 drop-shadow-lg"
-                        : "text-gray-400 hover:text-red-400"
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* Rating & Stats */}
-              <div className="flex flex-wrap items-center gap-4 mb-6 pt-4 border-t border-amber-100">
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1.5">
-                    <FaStar className="text-amber-500 fill-amber-500" />
-                    <span className="font-bold text-gray-900">
-                      {vehicle.rating}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      {[...Array(5)].map((_, i) => (
+                        <Star
+                          key={i}
+                          className={`w-4 h-4 ${
+                            i < Math.round(vehicle.rating || 0)
+                              ? "fill-amber-400 text-amber-400"
+                              : "text-gray-300"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-sm text-gray-600">
+                      {vehicle.rating || 0} ({vehicle.reviews || 0} reviews)
                     </span>
                   </div>
-                  <span className="text-sm text-gray-600">
-                    ({vehicle.totalReviews || vehicle.trips} reviews)
-                  </span>
                 </div>
-                <div className="w-px h-4 bg-amber-200"></div>
-                <div className="flex items-center gap-2">
-                  <FaCalendarAlt className="text-amber-600" />
-                  <span className="text-sm text-gray-600">
-                    {vehicle.trips?.toLocaleString() || "0"} trips completed
-                  </span>
-                </div>
-                <div className="w-px h-4 bg-amber-200"></div>
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                    <div className="absolute inset-0 rounded-full bg-emerald-500/30 animate-ping"></div>
-                  </div>
-                  <span className="text-sm font-medium text-emerald-700">
-                    {vehicle.availability || 95}% available
-                  </span>
-                </div>
-              </div>
 
-              {/* Quick Specs Grid */}
-              <div className="grid grid-cols-4 gap-3 mb-6">
-                <div className="text-center p-3 bg-linear-to-b from-amber-50 to-white rounded-xl border border-amber-100">
-                  <FaUsers className="text-amber-600 mx-auto mb-2" />
-                  <p className="text-xs text-gray-500 mb-1">Seats</p>
-                  <p className="font-bold text-gray-900">
-                    {vehicle.capacity?.passengers || vehicle.capacity || "4"}
-                  </p>
-                </div>
-                <div className="text-center p-3 bg-linear-to-b from-amber-50 to-white rounded-xl border border-amber-100">
-                  <FaSuitcaseRolling className="text-amber-600 mx-auto mb-2" />
-                  <p className="text-xs text-gray-500 mb-1">Luggage</p>
-                  <p className="font-bold text-gray-900">
-                    {vehicle.capacity?.luggage || "3"}
-                  </p>
-                </div>
-                <div className="text-center p-3 bg-linear-to-b from-amber-50 to-white rounded-xl border border-amber-100">
-                  <FaTachometerAlt className="text-amber-600 mx-auto mb-2" />
-                  <p className="text-xs text-gray-500 mb-1">Type</p>
-                  <p className="font-bold text-gray-900 capitalize">
-                    {vehicle.type}
-                  </p>
-                </div>
-                <div className="text-center p-3 bg-linear-to-b from-amber-50 to-white rounded-xl border border-amber-100">
-                  <FaPalette className="text-amber-600 mx-auto mb-2" />
-                  <p className="text-xs text-gray-500 mb-1">Color</p>
-                  <p className="font-bold text-gray-900">
-                    {vehicle.color || "Premium"}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Pricing Card */}
-            <div className="bg-linear-to-br from-amber-600 to-amber-700 rounded-3xl p-6 shadow-2xl shadow-amber-900/20">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm font-semibold text-amber-100 uppercase tracking-widest">
-                  Exclusive Pricing
-                </p>
-                <div className="px-3 py-1 bg-amber-800/50 rounded-full">
-                  <span className="text-xs text-amber-100">Best Value</span>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex justify-between items-baseline pb-3 border-b border-amber-500/30">
+                {/* Price & Year */}
+                <div className="border-t border-gray-200 pt-4 space-y-3">
                   <div>
-                    <span className="text-amber-100/90">Hourly Rate</span>
-                    <p className="text-xs text-amber-200/70 mt-1">
-                      Perfect for short trips
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                      Daily Rate
+                    </p>
+                    <p className="text-3xl font-bold text-amber-700">
+                      {formatPrice(vehicle.pricing?.daily || 0)}
                     </p>
                   </div>
-                  <span className="text-3xl font-bold text-white">
-                    {formatPrice(
-                      vehicle.pricing?.perHour || vehicle.pricePerHour,
-                    )}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-baseline pb-3 border-b border-amber-500/30">
-                  <div>
-                    <span className="text-amber-100/90">Daily Rate</span>
-                    <p className="text-xs text-amber-200/70 mt-1">Save 15%</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Year</p>
+                      <p className="text-lg font-semibold text-gray-900">
+                        {vehicle.year || "N/A"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Category</p>
+                      <p className="text-lg font-semibold text-gray-900 capitalize">
+                        {vehicle.category || "N/A"}
+                      </p>
+                    </div>
                   </div>
-                  <span className="text-2xl font-bold text-amber-50">
-                    {formatPrice(
-                      vehicle.pricing?.perDay || vehicle.pricePerHour * 6,
-                    )}
-                  </span>
                 </div>
 
-                <div className="flex justify-between items-baseline">
-                  <div>
-                    <span className="text-amber-100/90">Weekly Rate</span>
-                    <p className="text-xs text-amber-200/70 mt-1">Save 25%</p>
-                  </div>
-                  <span className="text-xl font-bold text-amber-100">
-                    {formatPrice(
-                      vehicle.pricing?.perWeek || vehicle.pricePerHour * 6 * 5,
-                    )}
-                  </span>
-                </div>
-              </div>
-
-              {vehicle.pricing?.includes &&
-                vehicle.pricing.includes.length > 0 && (
-                  <div className="mt-6 pt-4 border-t border-amber-500/30">
-                    <p className="text-xs text-amber-100/80 mb-3 uppercase tracking-wider">
-                      All Includes:
+                {/* Service Locations */}
+                {vehicle.serviceLocations?.length > 0 && (
+                  <div className="border-t border-gray-200 pt-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      Available In
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      {vehicle.pricing.includes.slice(0, 4).map((item, idx) => (
+                      {vehicle.serviceLocations.slice(0, 3).map((loc, idx) => (
                         <span
                           key={idx}
-                          className="text-xs px-3 py-1.5 bg-amber-800/40 text-amber-100 rounded-full border border-amber-500/30"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium border border-amber-200"
                         >
-                          {item}
+                          <MapPin className="w-3 h-3" />
+                          {loc}
                         </span>
                       ))}
                     </div>
                   </div>
                 )}
-            </div>
-
-            {/* CTA Buttons */}
-            <div className="space-y-4">
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleBookNow}
-                className="w-full px-8 py-4 bg-linear-to-r from-amber-600 to-amber-700 text-white font-bold rounded-2xl shadow-xl shadow-amber-600/30 hover:shadow-2xl hover:shadow-amber-600/40 transition-all duration-300 text-lg"
-              >
-                Book Now
-              </motion.button>
-
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={handleShare}
-                  className="px-4 py-3 border-2 border-amber-600 text-amber-600 font-semibold rounded-xl hover:bg-amber-50 transition-all duration-300 flex items-center justify-center gap-3 group"
-                >
-                  <FaShare className="text-sm transition-transform group-hover:rotate-12" />
-                  <span>Share</span>
-                </button>
-                <button
-                  onClick={() => navigate("/contact")}
-                  className="px-4 py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 hover:border-amber-300 hover:text-amber-700 transition-all duration-300 flex items-center justify-center gap-3"
-                >
-                  <FaEnvelope className="text-sm" />
-                  <span>Inquiry</span>
-                </button>
               </div>
             </div>
 
-            {/* Host Info */}
-            {vehicle.host && (
-              <div className="bg-white rounded-2xl p-5 border border-amber-100 shadow-lg shadow-amber-900/5">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">
-                  Premium Host
+            {/* Pricing Tiers Card */}
+            {vehicle.pricing && (
+              <div className="bg-linear-to-br from-amber-50 to-amber-100/50 rounded-2xl p-6 border border-amber-200">
+                <p className="text-xs font-semibold text-amber-900 uppercase tracking-wider mb-4">
+                  Pricing Options
                 </p>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="relative">
-                      <div className="w-12 h-12 rounded-full bg-linear-to-br from-amber-600 to-amber-700 flex items-center justify-center text-white font-bold text-lg shadow-lg">
-                        {vehicle.host.name?.charAt(0) || "S"}
-                      </div>
-                      <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 rounded-full border-2 border-white"></div>
-                    </div>
-                    <div>
-                      <p className="font-bold text-gray-900">
-                        {vehicle.host.name}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <FaStar className="text-amber-500 text-xs" />
-                        <span className="text-xs text-gray-600">
-                          {vehicle.host.rating} • {vehicle.host.responseRate}{" "}
-                          response rate
+                <div className="space-y-3">
+                  {vehicle.pricing.hourly && (
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-amber-600" />
+                        <span className="text-sm font-medium text-amber-900">
+                          Hourly
                         </span>
+                        {vehicle.pricing.hourly.min > 0 && (
+                          <span className="text-xs text-amber-600">
+                            (min {vehicle.pricing.hourly.min} hrs)
+                          </span>
+                        )}
                       </div>
+                      <span className="font-bold text-amber-700">
+                        {formatPrice(vehicle.pricing.hourly.rate || 0)}/hr
+                      </span>
                     </div>
+                  )}
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-amber-900">
+                      Daily
+                    </span>
+                    <span className="font-bold text-amber-700">
+                      {formatPrice(vehicle.pricing.daily || 0)}
+                    </span>
                   </div>
-                  <button className="text-xs font-semibold text-amber-600 hover:text-amber-700 transition-colors">
-                    View Profile
-                  </button>
+                  {vehicle.pricing.weekly > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium text-amber-900">
+                        Weekly
+                      </span>
+                      <span className="font-bold text-amber-700">
+                        {formatPrice(vehicle.pricing.weekly)}
+                      </span>
+                    </div>
+                  )}
+                  {vehicle.pricing.monthly > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium text-amber-900">
+                        Monthly
+                      </span>
+                      <span className="font-bold text-amber-700">
+                        {formatPrice(vehicle.pricing.monthly)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
           </motion.div>
         </div>
 
-        {/* Description */}
-        <motion.div variants={itemVariants} className="max-w-3xl mb-16">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-0.5 bg-linear-to-r from-amber-600 to-amber-400"></div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              Vehicle Overview
-            </h2>
-          </div>
-          <p className="text-lg text-gray-700 leading-relaxed font-light mb-8">
-            {vehicle.description ||
-              `Experience unparalleled luxury with this premium ${vehicle.category}. Meticulously maintained and equipped with state-of-the-art features, this vehicle offers the perfect blend of performance, comfort, and style for your journey across Africa's most stunning landscapes.`}
-          </p>
-
-          {vehicle.tags && vehicle.tags.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {vehicle.tags.map((tag, idx) => (
-                <span
-                  key={idx}
-                  className="px-4 py-2 bg-linear-to-r from-amber-50 to-amber-100 text-amber-700 text-sm rounded-full border border-amber-200 hover:border-amber-300 transition-colors cursor-default"
-                >
-                  {tag}
-                </span>
-              ))}
+        {/* Specifications Grid */}
+        <motion.div variants={itemVariants} className="mb-8">
+          <div className="grid md:grid-cols-3 gap-4">
+            {/* Capacity */}
+            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                  <Users className="w-5 h-5 text-amber-700" />
+                </div>
+                <h3 className="font-semibold text-gray-900">Capacity</h3>
+              </div>
+              <p className="text-2xl font-bold text-gray-900 mb-1">
+                {vehicle.capacity?.passengers || 4}
+              </p>
+              <p className="text-xs text-gray-500">Passenger Seats</p>
             </div>
-          )}
+
+            {/* Luggage */}
+            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                  <Luggage className="w-5 h-5 text-amber-700" />
+                </div>
+                <h3 className="font-semibold text-gray-900">Luggage</h3>
+              </div>
+              <p className="text-2xl font-bold text-gray-900 mb-1">
+                {vehicle.capacity?.luggage || 3}
+              </p>
+              <p className="text-xs text-gray-500">Large Suitcases</p>
+            </div>
+
+            {/* Availability */}
+            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                  <Calendar className="w-5 h-5 text-amber-700" />
+                </div>
+                <h3 className="font-semibold text-gray-900">Available</h3>
+              </div>
+              <p className="text-2xl font-bold text-gray-900 mb-1">
+                {vehicle.availableUnits || 0}/{vehicle.totalUnits || 0}
+              </p>
+              <p className="text-xs text-gray-500">Units Ready</p>
+            </div>
+          </div>
         </motion.div>
 
-        {/* Tabs Navigation */}
-        <motion.div variants={itemVariants} className="mb-12">
-          <div className="flex space-x-1 mb-8 bg-linear-to-r from-amber-50 to-amber-100/50 rounded-2xl p-1 shadow-inner">
-            {["overview", "specifications", "features", "location"].map(
-              (tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`flex-1 px-6 py-4 font-medium capitalize rounded-xl transition-all duration-300 ${
-                    activeTab === tab
-                      ? "bg-white text-amber-700 shadow-lg shadow-amber-900/10 border border-amber-100"
-                      : "text-gray-600 hover:text-amber-700 hover:bg-white/50"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ),
-            )}
-          </div>
-
-          {/* Tab Content */}
-          <div className="min-h-100">
-            {/* Overview Tab */}
-            {activeTab === "overview" && (
-              <div className="grid md:grid-cols-2 gap-8">
-                {/* Capacity & Features */}
-                <div className="bg-white rounded-2xl p-6 border border-amber-100 shadow-lg shadow-amber-900/5">
-                  <h3 className="text-xl font-bold text-gray-900 mb-6 pb-4 border-b border-amber-100 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-linear-to-br from-amber-100 to-amber-50 flex items-center justify-center">
-                      <FaUsers className="text-amber-600" />
-                    </div>
-                    Capacity & Comfort
-                  </h3>
-                  <div className="space-y-6">
-                    <div className="flex items-center gap-4 p-3 hover:bg-amber-50/50 rounded-xl transition-colors">
-                      <div className="w-14 h-14 rounded-xl bg-linear-to-br from-amber-600/10 to-amber-500/5 flex items-center justify-center">
-                        <FaUsers className="text-amber-600 text-xl" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-600">Passengers</p>
-                        <p className="text-lg font-bold text-gray-900">
-                          {vehicle.capacity?.passengers || vehicle.capacity}{" "}
-                          Seats
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4 p-3 hover:bg-amber-50/50 rounded-xl transition-colors">
-                      <div className="w-14 h-14 rounded-xl bg-linear-to-br from-amber-600/10 to-amber-500/5 flex items-center justify-center">
-                        <FaSuitcaseRolling className="text-amber-600 text-xl" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-600">
-                          Luggage Capacity
-                        </p>
-                        <p className="text-lg font-bold text-gray-900">
-                          {vehicle.capacity?.luggage || "3"} Large Suitcases
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4 p-3 hover:bg-amber-50/50 rounded-xl transition-colors">
-                      <div className="w-14 h-14 rounded-xl bg-linear-to-br from-amber-600/10 to-amber-500/5 flex items-center justify-center">
-                        <FaDoorOpen className="text-amber-600 text-xl" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-600">Doors</p>
-                        <p className="text-lg font-bold text-gray-900">
-                          {vehicle.specifications?.doors || "4"} Doors
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Features */}
-                <div className="bg-white rounded-2xl p-6 border border-amber-100 shadow-lg shadow-amber-900/5">
-                  <h3 className="text-xl font-bold text-gray-900 mb-6 pb-4 border-b border-amber-100 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-linear-to-br from-amber-100 to-amber-50 flex items-center justify-center">
-                      <FaCrown className="text-amber-600" />
-                    </div>
-                    Premium Features
-                  </h3>
-                  <ul className="space-y-3">
-                    {Array.isArray(vehicle.features) &&
-                      vehicle.features.slice(0, 6).map((feature, idx) => (
-                        <li
-                          key={idx}
-                          className="flex items-start gap-3 p-2 hover:bg-amber-50/50 rounded-lg transition-colors"
-                        >
-                          <div className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
-                            <FaCheck className="text-amber-600 text-xs" />
-                          </div>
-                          <span className="text-gray-700">{feature}</span>
-                        </li>
-                      ))}
-                  </ul>
-                </div>
-              </div>
-            )}
-
-            {/* Specifications Tab */}
-            {activeTab === "specifications" && vehicle.specifications && (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Detailed Specifications */}
+        {vehicle.specifications &&
+        Object.keys(vehicle.specifications).length > 0 ? (
+          <motion.div variants={itemVariants} className="mb-8">
+            <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-200">
+              <h2 className="text-lg font-bold text-gray-900 mb-4">
+                Specifications
+              </h2>
+              <div className="grid md:grid-cols-2 gap-6">
                 {Object.entries(vehicle.specifications).map(([key, value]) => (
                   <div
                     key={key}
-                    className="bg-white rounded-xl p-5 border border-amber-100 hover:border-amber-200 transition-colors group"
+                    className="pb-4 border-b border-gray-200 last:border-0"
                   >
-                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">
-                      {key
-                        .replace(/([A-Z])/g, " $1")
-                        .toLowerCase()
-                        .trim()}
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                      {key}
                     </p>
-                    <p className="text-lg font-bold text-gray-900 group-hover:text-amber-700 transition-colors">
+                    <p className="text-base font-semibold text-gray-900">
                       {value}
                     </p>
                   </div>
                 ))}
               </div>
-            )}
+            </div>
+          </motion.div>
+        ) : null}
 
-            {/* Features Tab */}
-            {activeTab === "features" && (
-              <div className="grid md:grid-cols-2 gap-8">
-                {/* Safety Features */}
-                {vehicle.safety && vehicle.safety.length > 0 && (
-                  <div className="bg-white rounded-2xl p-6 border border-amber-100 shadow-lg shadow-amber-900/5">
-                    <h3 className="text-xl font-bold text-gray-900 mb-6 pb-4 border-b border-amber-100 flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-linear-to-br from-red-100 to-red-50 flex items-center justify-center">
-                        <FaShieldAlt className="text-red-600" />
-                      </div>
-                      Safety Features
-                    </h3>
-                    <ul className="space-y-3">
-                      {vehicle.safety.slice(0, 6).map((feature, idx) => (
-                        <li
-                          key={idx}
-                          className="flex items-start gap-3 p-2 hover:bg-red-50/50 rounded-lg transition-colors"
-                        >
-                          <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
-                            <FaCheck className="text-red-600 text-xs" />
-                          </div>
-                          <span className="text-gray-700">{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
+        {/* Features Section */}
+        {vehicle.features?.length > 0 ? (
+          <motion.div variants={itemVariants} className="mb-8">
+            <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-200">
+              <h2 className="text-lg font-bold text-gray-900 mb-4">
+                Key Features
+              </h2>
+              <div className="grid md:grid-cols-2 gap-3">
+                {vehicle.features.map((feature, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 border border-gray-200 hover:border-amber-300 hover:bg-amber-50 transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                      {featureIcons[feature] || (
+                        <Check className="w-4 h-4 text-amber-700" />
+                      )}
+                    </div>
+                    <span className="text-sm font-medium text-gray-900">
+                      {feature}
+                    </span>
                   </div>
-                )}
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        ) : null}
 
-                {/* Comfort Features */}
-                {vehicle.comfort && vehicle.comfort.length > 0 && (
-                  <div className="bg-white rounded-2xl p-6 border border-amber-100 shadow-lg shadow-amber-900/5">
-                    <h3 className="text-xl font-bold text-gray-900 mb-6 pb-4 border-b border-amber-100 flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-linear-to-br from-blue-100 to-blue-50 flex items-center justify-center">
-                        <FaCarSide className="text-blue-600" />
-                      </div>
-                      Comfort & Entertainment
-                    </h3>
-                    <ul className="space-y-3">
-                      {vehicle.comfort.slice(0, 6).map((feature, idx) => (
-                        <li
-                          key={idx}
-                          className="flex items-start gap-3 p-2 hover:bg-blue-50/50 rounded-lg transition-colors"
-                        >
-                          <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center shrink-0 mt-0.5">
-                            <FaCheck className="text-blue-600 text-xs" />
-                          </div>
-                          <span className="text-gray-700">{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+        {/* Collapsible Sections */}
+        <motion.div variants={itemVariants} className="space-y-3 mb-8">
+          {/* Description Section */}
+          <div className="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden">
+            <button
+              onClick={() => toggleSection("description")}
+              className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+            >
+              <h3 className="text-base font-bold text-gray-900">Description</h3>
+              <ChevronDown
+                className={`w-5 h-5 text-gray-600 transition-transform ${
+                  expandedSection === "description" ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+            {expandedSection === "description" && (
+              <div className="px-6 pb-4 border-t border-gray-200">
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  {vehicle.description || "No description available."}
+                </p>
               </div>
             )}
+          </div>
 
-            {/* Location Tab */}
-            {activeTab === "location" && (
-              <div className="grid md:grid-cols-2 gap-8">
-                {vehicle.baseLocation && (
-                  <div className="bg-white rounded-2xl p-6 border border-amber-100 shadow-lg shadow-amber-900/5">
-                    <h3 className="text-xl font-bold text-gray-900 mb-6 pb-4 border-b border-amber-100 flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-linear-to-br from-amber-100 to-amber-50 flex items-center justify-center">
-                        <FaMapMarkerAlt className="text-amber-600" />
-                      </div>
-                      Pickup Location
-                    </h3>
-                    <div className="space-y-4">
-                      <div>
-                        <p className="text-lg font-semibold text-gray-900 mb-1">
-                          {vehicle.baseLocation.city}
-                        </p>
-                        <p className="text-gray-600">
-                          {vehicle.baseLocation.address}
-                        </p>
-                      </div>
-                      <div className="aspect-video bg-linear-to-br from-amber-100 to-amber-200 rounded-xl flex items-center justify-center overflow-hidden">
-                        <div className="text-center p-6">
-                          <div className="relative">
-                            <FaMapMarkerAlt className="text-amber-600 text-5xl mx-auto mb-4 animate-bounce" />
-                            <div className="absolute inset-0 bg-amber-600/20 rounded-full animate-ping"></div>
-                          </div>
-                          <p className="text-amber-700 font-medium">
-                            Available for Pickup
-                          </p>
-                          <p className="text-sm text-amber-600/70 mt-2">
-                            Free parking ∙ 24/7 access ∙ Secure facility
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="bg-white rounded-2xl p-6 border border-amber-100 shadow-lg shadow-amber-900/5">
-                  <h3 className="text-xl font-bold text-gray-900 mb-6 pb-4 border-b border-amber-100">
-                    Contact & Support
-                  </h3>
-                  <div className="space-y-4">
-                    <p className="text-gray-700 mb-6">
-                      Our premium concierge team is available 24/7 to assist
-                      with your booking and answer any questions.
-                    </p>
-                    <button
-                      onClick={handleCall}
-                      className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-linear-to-r from-amber-600 to-amber-700 text-white font-semibold rounded-xl hover:shadow-xl hover:shadow-amber-600/30 transition-all duration-300 group"
-                    >
-                      <FaPhone className="text-sm transition-transform group-hover:scale-110" />
-                      Call: +254 700 000 000
-                    </button>
-                    <button
-                      onClick={handleEmail}
-                      className="w-full flex items-center justify-center gap-3 px-6 py-4 border-2 border-amber-600 text-amber-600 font-semibold rounded-xl hover:bg-amber-50 transition-all duration-300 group"
-                    >
-                      <FaEnvelope className="text-sm transition-transform group-hover:scale-110" />
-                      Email: bookings@skydrive.africa
-                    </button>
-                  </div>
+          {/* Rental Terms Section */}
+          <div className="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden">
+            <button
+              onClick={() => toggleSection("terms")}
+              className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+            >
+              <h3 className="text-base font-bold text-gray-900">
+                Rental Terms
+              </h3>
+              <ChevronDown
+                className={`w-5 h-5 text-gray-600 transition-transform ${
+                  expandedSection === "terms" ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+            {expandedSection === "terms" && (
+              <div className="px-6 pb-4 border-t border-gray-200 space-y-3">
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                    Minimum Rental Period
+                  </p>
+                  <p className="text-sm text-gray-700">1 day</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                    Cancellation Policy
+                  </p>
+                  <p className="text-sm text-gray-700">
+                    Free cancellation up to 24 hours before rental
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                    Insurance
+                  </p>
+                  <p className="text-sm text-gray-700">
+                    Comprehensive coverage included
+                  </p>
                 </div>
               </div>
             )}
           </div>
         </motion.div>
+
+        {/* Sticky Action Buttons */}
+        <motion.div
+          variants={itemVariants}
+          className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-2xl z-30"
+        >
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex gap-3">
+            <Button
+              onClick={handleBookNow}
+              className="flex-1 bg-amber-700 hover:bg-amber-800 text-white font-semibold py-3 rounded-lg transition-colors"
+              disabled={vehicle.availableUnits === 0}
+            >
+              Book Now
+            </Button>
+            <Button
+              onClick={handleContact}
+              variant="outline"
+              className="flex-1 border-2 border-amber-700 text-amber-700 hover:bg-amber-50 font-semibold py-3 rounded-lg transition-colors"
+            >
+              <Phone className="w-4 h-4 mr-2" />
+              Contact
+            </Button>
+            <Button
+              onClick={handleInquiry}
+              variant="outline"
+              className="flex-1 border-2 border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold py-3 rounded-lg transition-colors"
+            >
+              <Mail className="w-4 h-4 mr-2" />
+              Inquiry
+            </Button>
+          </div>
+        </motion.div>
+
+        {/* Spacer for sticky buttons */}
+        <div className="h-24" />
       </motion.div>
     </div>
   );

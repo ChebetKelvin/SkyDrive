@@ -5,11 +5,14 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLoaderData,
 } from "react-router";
+import { getSession } from "./.server/session.js";
 
 import "./app.css";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
+
 export const links = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {
@@ -23,7 +26,21 @@ export const links = () => [
   },
 ];
 
+// Add loader to get user from session
+export async function loader({ request }) {
+  try {
+    const session = await getSession(request.headers.get("Cookie"));
+    const user = session.get("user");
+    return { user };
+  } catch (error) {
+    console.error("Error loading session:", error);
+    return { user: null };
+  }
+}
+
 export function Layout({ children }) {
+  const { user } = useLoaderData() || { user: null };
+
   return (
     <html lang="en">
       <head>
@@ -32,10 +49,13 @@ export function Layout({ children }) {
         <Meta />
         <Links />
       </head>
-      <body>
-        <Navbar />
-        {children}
-        <Footer />
+      <body className="w-full overflow-x-hidden">
+        <div className="w-full overflow-x-hidden">
+          <Navbar user={user} />
+          {children}
+          <Footer />
+        </div>
+
         <ScrollRestoration />
         <Scripts />
       </body>
