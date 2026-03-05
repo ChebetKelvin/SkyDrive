@@ -19,7 +19,6 @@ import {
   FaChevronRight,
   FaSync,
   FaDownload,
-  FaUserCog,
   FaUserCheck,
   FaUserTimes,
 } from "react-icons/fa";
