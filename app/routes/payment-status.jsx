@@ -4,7 +4,7 @@ import { data } from "react-router";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
-import { getPaymentByCheckoutId } from "../models/payments.js";
+import { getPaymentByCheckoutId } from "../models/payments.server.js";
 import { getBookingByPaymentId } from "../models/booking.js";
 import { getSession } from "../.server/session.js";
 import {
@@ -19,7 +19,6 @@ import {
   FaArrowLeft,
   FaExclamationTriangle,
   FaCar,
-  FaMoneyBillWave,
 } from "react-icons/fa";
 
 export async function loader({ request }) {

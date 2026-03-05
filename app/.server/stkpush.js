@@ -1,4 +1,4 @@
-import { addPayments } from "../models/payments";
+import { addPayments } from "../models/payments.server";
 
 // Function to request STK Push
 export async function stkPush({ phone, amount }) {
