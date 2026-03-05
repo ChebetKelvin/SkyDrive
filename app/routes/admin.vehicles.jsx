@@ -1,4 +1,3 @@
-// routes/admin.vehicles.jsx
 import { useLoaderData, useFetcher, useNavigate } from "react-router";
 import {
   getVehicles,

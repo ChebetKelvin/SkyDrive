@@ -9,11 +9,9 @@ import {
   FaPhone,
   FaCalendarAlt,
   FaCar,
-  FaCheckCircle,
+  FaUserCog,
   FaTimesCircle,
   FaBan,
-  FaTrash,
-  FaEdit,
   FaEye,
   FaSearch,
   FaFilter,
@@ -24,8 +22,6 @@ import {
   FaUserCog,
   FaUserCheck,
   FaUserTimes,
-  FaKey,
-  FaStar,
 } from "react-icons/fa";
 
 // Import admin functions

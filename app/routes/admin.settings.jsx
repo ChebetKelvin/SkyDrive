@@ -3,7 +3,6 @@ import { useLoaderData, useFetcher, useNavigate } from "react-router";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  FaCog,
   FaSave,
   FaTimes,
   FaPlus,
@@ -14,33 +13,15 @@ import {
   FaGlobe,
   FaMoneyBillWave,
   FaCar,
-  FaUsers,
   FaBell,
   FaEnvelope,
   FaMobileAlt,
   FaShieldAlt,
-  FaPalette,
-  FaLanguage,
   FaClock,
-  FaPercentage,
-  FaDollarSign,
   FaCreditCard,
-  FaMapMarkerAlt,
-  FaWifi,
-  FaBluetooth,
-  FaChargingStation,
-  FaSnowflake,
-  FaTachometerAlt,
   FaStar,
-  FaGasPump,
   FaCog as FaGear,
-  FaUserCog,
-  FaKey,
   FaDatabase,
-  FaCloud,
-  FaServer,
-  FaLock,
-  FaUnlock,
 } from "react-icons/fa";
 
 // Import admin settings functions

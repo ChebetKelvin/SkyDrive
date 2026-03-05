@@ -1,7 +1,7 @@
 // routes/admin.bookings.jsx
 import { useLoaderData, useFetcher, useNavigate } from "react-router";
 import { getAllBookings, getBookingStats } from "../.server/admin.js";
-import { updateBookingStatus } from "../models/booking.js";
+import { updateBookingStatus } from "../models/booking.server.js";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {

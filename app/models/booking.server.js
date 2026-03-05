@@ -1,4 +1,3 @@
-// models/booking.js
 import { client } from "../.server/mongo.js";
 import { ObjectId } from "mongodb";
 import { checkBookingConflict } from "../.server/bookingCheck.js";
