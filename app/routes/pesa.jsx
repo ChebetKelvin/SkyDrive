@@ -1,15 +1,12 @@
 // app/routes/mpesa.tsx - Fully integrated with your booking model
 import { data } from "react-router";
-import {
-  updateLatestPayment,
-  getPaymentByCheckoutId,
-} from "../models/payments";
+// pesa.jsx
+import { updateLatestPayment } from "../models/payments.server";
+
 import {
   getBookingByPaymentId,
   updateBookingStatus,
-  addToUserBookings,
-  updateVehicleStats,
-} from "../models/booking";
+} from "../models/booking.server";
 
 // Helper function outside action to avoid recreation
 function formatTxDate(raw) {
