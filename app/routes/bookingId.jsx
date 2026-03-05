@@ -1,7 +1,7 @@
 // routes/bookings.jsx
 import { redirect, useLoaderData } from "react-router";
 import { getSession } from "../.server/session.js";
-import { getUserBookings } from "../models/booking.js";
+import { getUserBookings } from "../models/booking.server.js";
 import { motion } from "framer-motion";
 import { Link } from "react-router";
 import {
