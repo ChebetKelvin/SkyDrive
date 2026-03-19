@@ -411,7 +411,7 @@ export default function Login() {
                           <p className="text-xs md:text-sm text-amber-800 font-medium">
                             🎉 Demo Mode
                           </p>
-                          <p className="text-xs text-amber-600 mt-1 break-words">
+                          <p className="text-xs text-amber-600 mt-1 wrap-break-word">
                             john@example.com / password123
                           </p>
                         </div>
