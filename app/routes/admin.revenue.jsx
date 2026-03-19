@@ -191,10 +191,10 @@ export default function AdminRevenue() {
         ? `${stats.revenueGrowth > 0 ? "+" : ""}${stats.revenueGrowth}%`
         : null,
       trend: stats?.revenueGrowth > 0 ? "up" : "down",
-      subtext: `${stats?.paidBookings || 0} paid bookings`,
+      subtext: `${stats?.paidBookings || 0} paid`,
     },
     {
-      title: "Monthly Revenue",
+      title: "Monthly",
       value: formatCurrency(stats?.monthlyRevenue || 0),
       icon: FaCalendarAlt,
       color: "bg-blue-500",
@@ -205,65 +205,67 @@ export default function AdminRevenue() {
       subtext: "Current month",
     },
     {
-      title: "Average Booking Value",
+      title: "Average",
       value: formatCurrency(stats?.avgBookingValue || 0),
       icon: FaChartLine,
       color: "bg-purple-500",
       change: `${stats?.avgBookingGrowth || 0}%`,
-      subtext: `${stats?.totalBookings || 0} total bookings`,
+      subtext: `per booking`,
     },
     {
-      title: "Outstanding Payments",
+      title: "Outstanding",
       value: formatCurrency(stats?.outstandingPayments || 0),
       icon: FaClock,
       color: "bg-orange-500",
       change: `${stats?.outstandingCount || 0} pending`,
-      subtext: `${((stats?.outstandingPayments / stats?.totalRevenue) * 100 || 0).toFixed(1)}% of revenue`,
+      subtext: "Awaiting payment",
     },
     {
-      title: "Conversion Rate",
+      title: "Conversion",
       value: formatPercentage(stats?.conversionRate || 0),
       icon: FaPercentage,
       color: "bg-indigo-500",
       change: `${stats?.conversionGrowth > 0 ? "+" : ""}${stats?.conversionGrowth || 0}%`,
-      subtext: "Booking to payment",
+      subtext: "Book to paid",
     },
     {
-      title: "Peak Revenue Day",
+      title: "Peak Day",
       value: stats?.peakDay?.date || "N/A",
       icon: FaChartBar,
       color: "bg-pink-500",
       subtext: stats?.peakDay?.amount
-        ? formatCurrency(stats.peakDay.amount)
+        ? formatCompactCurrency(stats.peakDay.amount)
         : "No data",
     },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gray-50 p-3 sm:p-4 lg:p-6 pb-20 sm:pb-6">
+      <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">
               Revenue Analytics
             </h1>
-            <p className="text-gray-600 mt-1">
-              Track your business financial performance
+            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
+              Track financial performance
             </p>
           </div>
-          <div className="flex gap-2">
+
+          {/* Controls - Stack on mobile */}
+          <div className="flex flex-wrap gap-2">
             {/* Period Selector */}
             <select
               value={period}
               onChange={(e) => setPeriod(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 bg-white text-gray-900"
+              className="flex-1 sm:flex-none px-3 sm:px-4 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 bg-white text-gray-900"
             >
-              <option value="day">Last 30 Days</option>
-              <option value="week">Last 12 Weeks</option>
-              <option value="month">Last 12 Months</option>
-              <option value="year">Last 5 Years</option>
-              <option value="custom">Custom Range</option>
+              <option value="day">30 Days</option>
+              <option value="week">12 Weeks</option>
+              <option value="month">12 Months</option>
+              <option value="year">5 Years</option>
+              <option value="custom">Custom</option>
             </select>
 
             {/* Refresh Button */}
@@ -272,7 +274,7 @@ export default function AdminRevenue() {
               className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
               title="Refresh"
             >
-              <FaSync />
+              <FaSync className="text-xs sm:text-sm" />
             </button>
 
             {/* Export Dropdown */}
@@ -281,18 +283,18 @@ export default function AdminRevenue() {
                 className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
                 title="Export"
               >
-                <FaDownload />
+                <FaDownload className="text-xs sm:text-sm" />
               </button>
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 hidden group-hover:block z-10">
+              <div className="absolute right-0 mt-2 w-40 sm:w-48 bg-white rounded-lg shadow-lg border border-gray-200 hidden group-hover:block z-10">
                 <div className="py-1">
-                  <button className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                    <FaFilePdf className="text-red-500" /> Export as PDF
+                  <button className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-left text-xs sm:text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                    <FaFilePdf className="text-red-500" /> PDF
                   </button>
-                  <button className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                    <FaFileExcel className="text-green-500" /> Export as Excel
+                  <button className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-left text-xs sm:text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                    <FaFileExcel className="text-green-500" /> Excel
                   </button>
-                  <button className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                    <FaPrint className="text-blue-500" /> Print Report
+                  <button className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-left text-xs sm:text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                    <FaPrint className="text-blue-500" /> Print
                   </button>
                 </div>
               </div>
@@ -305,12 +307,12 @@ export default function AdminRevenue() {
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-xl shadow-lg p-4"
+            className="bg-white rounded-lg sm:rounded-xl shadow p-3 sm:p-4"
           >
-            <div className="flex flex-col sm:flex-row gap-4 items-end">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
               <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Start Date
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  From
                 </label>
                 <input
                   type="date"
@@ -318,12 +320,12 @@ export default function AdminRevenue() {
                   onChange={(e) =>
                     setDateRange((prev) => ({ ...prev, start: e.target.value }))
                   }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-gray-900"
+                  className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-gray-900"
                 />
               </div>
               <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  End Date
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  To
                 </label>
                 <input
                   type="date"
@@ -331,12 +333,12 @@ export default function AdminRevenue() {
                   onChange={(e) =>
                     setDateRange((prev) => ({ ...prev, end: e.target.value }))
                   }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-gray-900"
+                  className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-gray-900"
                 />
               </div>
               <button
                 onClick={handleDateRangeApply}
-                className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors font-medium"
+                className="w-full sm:w-auto px-4 sm:px-6 py-1.5 sm:py-2 bg-amber-600 text-white text-xs sm:text-sm rounded-lg hover:bg-amber-700 transition-colors font-medium mt-2 sm:mt-0"
               >
                 Apply
               </button>
@@ -344,124 +346,127 @@ export default function AdminRevenue() {
           </motion.div>
         )}
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Stats Cards - 2 columns on mobile */}
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
           {statsCards.map((card, index) => (
             <motion.div
               key={card.title}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
-              className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-all hover:scale-[1.02]"
+              className="bg-white rounded-lg sm:rounded-xl shadow p-3 sm:p-6 hover:shadow-xl transition-all hover:scale-[1.02]"
             >
               <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="text-sm text-gray-600 mb-1">{card.title}</p>
-                  <p className="text-2xl font-bold text-gray-900">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-gray-600 mb-0.5 sm:mb-1 truncate">
+                    {card.title}
+                  </p>
+                  <p className="text-sm sm:text-base lg:text-2xl font-bold text-gray-900 truncate">
                     {card.value}
                   </p>
 
                   {card.change && (
                     <p
-                      className={`text-sm mt-2 flex items-center gap-1 font-medium ${
+                      className={`text-xs mt-1 sm:mt-2 flex items-center gap-1 font-medium ${
                         card.trend === "up" ? "text-green-600" : "text-red-600"
                       }`}
                     >
                       {getGrowthIcon(card.trend === "up" ? 1 : -1)}
-                      {card.change}
+                      <span className="hidden sm:inline">{card.change}</span>
                     </p>
                   )}
 
                   {card.subtext && (
-                    <p className="text-sm text-gray-500 mt-2">{card.subtext}</p>
+                    <p className="text-xs text-gray-500 mt-1 sm:mt-2 truncate">
+                      {card.subtext}
+                    </p>
                   )}
                 </div>
-                <div className={`${card.color} p-3 rounded-lg`}>
-                  <card.icon className="text-white text-xl" />
+                <div className={`${card.color} p-1.5 sm:p-3 rounded-lg ml-2`}>
+                  <card.icon className="text-white text-sm sm:text-xl" />
                 </div>
               </div>
             </motion.div>
           ))}
         </div>
 
-        {/* View Tabs */}
-        <div className="bg-white rounded-xl shadow-lg p-2">
-          <div className="flex gap-2">
+        {/* View Tabs - Horizontal scroll on mobile */}
+        <div className="bg-white rounded-lg sm:rounded-xl shadow p-1 sm:p-2 overflow-x-auto">
+          <div className="flex gap-1 sm:gap-2 min-w-max">
             <button
               onClick={() => setView("overview")}
-              className={`flex-1 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-colors flex items-center gap-1 sm:gap-2 font-medium text-xs sm:text-sm ${
                 view === "overview"
                   ? "bg-amber-600 text-white"
                   : "hover:bg-gray-100 text-gray-700"
               }`}
             >
-              <FaChartLine />
-              Overview
+              <FaChartLine className="text-xs sm:text-sm" />
+              <span>Overview</span>
             </button>
             <button
               onClick={() => setView("categories")}
-              className={`flex-1 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-colors flex items-center gap-1 sm:gap-2 font-medium text-xs sm:text-sm ${
                 view === "categories"
                   ? "bg-amber-600 text-white"
                   : "hover:bg-gray-100 text-gray-700"
               }`}
             >
-              <FaChartPie />
-              Categories
+              <FaChartPie className="text-xs sm:text-sm" />
+              <span>Categories</span>
             </button>
             <button
               onClick={() => setView("vehicles")}
-              className={`flex-1 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-colors flex items-center gap-1 sm:gap-2 font-medium text-xs sm:text-sm ${
                 view === "vehicles"
                   ? "bg-amber-600 text-white"
                   : "hover:bg-gray-100 text-gray-700"
               }`}
             >
-              <FaCar />
-              Top Vehicles
+              <FaCar className="text-xs sm:text-sm" />
+              <span>Vehicles</span>
             </button>
             <button
               onClick={() => setView("payments")}
-              className={`flex-1 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-colors flex items-center gap-1 sm:gap-2 font-medium text-xs sm:text-sm ${
                 view === "payments"
                   ? "bg-amber-600 text-white"
                   : "hover:bg-gray-100 text-gray-700"
               }`}
             >
-              <FaWallet />
-              Payments
+              <FaWallet className="text-xs sm:text-sm" />
+              <span>Payments</span>
             </button>
           </div>
         </div>
 
         {/* Overview View */}
         {view === "overview" && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* Main Revenue Chart */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-xl shadow-lg p-6"
+              className="bg-white rounded-lg sm:rounded-xl shadow p-4 sm:p-6"
             >
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <h2 className="text-base sm:text-lg font-semibold text-gray-900 flex items-center gap-2">
                     <FaChartLine className="text-amber-600" />
                     Revenue Trend
                   </h2>
-                  <p className="text-sm text-gray-600">
-                    {period === "day" &&
-                      "Daily revenue for the selected period"}
-                    {period === "week" && "Weekly revenue trends"}
-                    {period === "month" && "Monthly revenue performance"}
-                    {period === "year" && "Yearly revenue overview"}
+                  <p className="text-xs text-gray-600">
+                    {period === "day" && "Daily revenue"}
+                    {period === "week" && "Weekly trends"}
+                    {period === "month" && "Monthly performance"}
+                    {period === "year" && "Yearly overview"}
                   </p>
                 </div>
 
                 <div className="flex gap-2">
                   <button
                     onClick={() => setSelectedChart("revenue")}
-                    className={`px-3 py-1 text-sm rounded-lg transition-colors font-medium ${
+                    className={`px-2 sm:px-3 py-1 text-xs rounded-lg transition-colors font-medium ${
                       selectedChart === "revenue"
                         ? "bg-amber-600 text-white"
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -471,7 +476,7 @@ export default function AdminRevenue() {
                   </button>
                   <button
                     onClick={() => setSelectedChart("bookings")}
-                    className={`px-3 py-1 text-sm rounded-lg transition-colors font-medium ${
+                    className={`px-2 sm:px-3 py-1 text-xs rounded-lg transition-colors font-medium ${
                       selectedChart === "bookings"
                         ? "bg-amber-600 text-white"
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -482,112 +487,117 @@ export default function AdminRevenue() {
                 </div>
               </div>
 
-              <ResponsiveContainer width="100%" height={400}>
-                {selectedChart === "revenue" ? (
-                  <AreaChart data={revenueByPeriod}>
-                    <defs>
-                      <linearGradient
-                        id="revenueGradient"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop
-                          offset="5%"
-                          stopColor="#f59e0b"
-                          stopOpacity={0.3}
-                        />
-                        <stop
-                          offset="95%"
-                          stopColor="#f59e0b"
-                          stopOpacity={0}
-                        />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis
-                      dataKey="_id"
-                      stroke="#6b7280"
-                      tick={{ fontSize: 12, fill: "#374151" }}
-                    />
-                    <YAxis
-                      stroke="#6b7280"
-                      tick={{ fontSize: 12, fill: "#374151" }}
-                      tickFormatter={(value) =>
-                        `KES ${(value / 1000).toFixed(0)}k`
-                      }
-                    />
-                    <Tooltip
-                      content={({ active, payload, label }) => {
-                        if (active && payload && payload.length) {
-                          return (
-                            <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-200">
-                              <p className="text-sm text-gray-600 mb-1">
-                                {label}
-                              </p>
-                              <p className="font-bold text-amber-600">
-                                {formatCurrency(payload[0].value)}
-                              </p>
-                              {payload[0].payload.count && (
-                                <p className="text-xs text-gray-500 mt-1">
-                                  {payload[0].payload.count} bookings
+              {/* Chart - Responsive height */}
+              <div className="h-62.5 sm:h-87.5 lg:h-100">
+                <ResponsiveContainer width="100%" height="100%">
+                  {selectedChart === "revenue" ? (
+                    <AreaChart data={revenueByPeriod}>
+                      <defs>
+                        <linearGradient
+                          id="revenueGradient"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="5%"
+                            stopColor="#f59e0b"
+                            stopOpacity={0.3}
+                          />
+                          <stop
+                            offset="95%"
+                            stopColor="#f59e0b"
+                            stopOpacity={0}
+                          />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis
+                        dataKey="_id"
+                        stroke="#6b7280"
+                        tick={{ fontSize: 10, fill: "#374151" }}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        stroke="#6b7280"
+                        tick={{ fontSize: 10, fill: "#374151" }}
+                        tickFormatter={(value) =>
+                          `KES ${(value / 1000).toFixed(0)}k`
+                        }
+                        width={45}
+                      />
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (active && payload && payload.length) {
+                            return (
+                              <div className="bg-white p-2 sm:p-3 rounded-lg shadow-lg border border-gray-200">
+                                <p className="text-xs text-gray-600 mb-1">
+                                  {label}
                                 </p>
-                              )}
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="total"
-                      stroke="#f59e0b"
-                      strokeWidth={3}
-                      fill="url(#revenueGradient)"
-                    />
-                  </AreaChart>
-                ) : (
-                  <BarChart data={revenueByPeriod}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis
-                      dataKey="_id"
-                      stroke="#6b7280"
-                      tick={{ fontSize: 12, fill: "#374151" }}
-                    />
-                    <YAxis
-                      stroke="#6b7280"
-                      tick={{ fontSize: 12, fill: "#374151" }}
-                    />
-                    <Tooltip
-                      content={({ active, payload, label }) => {
-                        if (active && payload && payload.length) {
-                          return (
-                            <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-200">
-                              <p className="text-sm text-gray-600 mb-1">
-                                {label}
-                              </p>
-                              <p className="font-bold text-amber-600">
-                                {payload[0].value} bookings
-                              </p>
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <Bar dataKey="count" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                )}
-              </ResponsiveContainer>
+                                <p className="font-bold text-amber-600 text-xs sm:text-sm">
+                                  {formatCurrency(payload[0].value)}
+                                </p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="total"
+                        stroke="#f59e0b"
+                        strokeWidth={2}
+                        fill="url(#revenueGradient)"
+                      />
+                    </AreaChart>
+                  ) : (
+                    <BarChart data={revenueByPeriod}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis
+                        dataKey="_id"
+                        stroke="#6b7280"
+                        tick={{ fontSize: 10, fill: "#374151" }}
+                      />
+                      <YAxis
+                        stroke="#6b7280"
+                        tick={{ fontSize: 10, fill: "#374151" }}
+                        width={30}
+                      />
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (active && payload && payload.length) {
+                            return (
+                              <div className="bg-white p-2 rounded-lg shadow-lg border border-gray-200">
+                                <p className="text-xs text-gray-600 mb-1">
+                                  {label}
+                                </p>
+                                <p className="font-bold text-amber-600 text-xs">
+                                  {payload[0].value} bookings
+                                </p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Bar
+                        dataKey="count"
+                        fill="#f59e0b"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  )}
+                </ResponsiveContainer>
+              </div>
 
-              {/* Summary Stats */}
-              <div className="grid grid-cols-4 gap-4 mt-6 pt-6 border-t border-gray-200">
+              {/* Summary Stats - 2 columns on mobile */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-4 pt-4 border-t border-gray-200">
                 <div>
-                  <p className="text-sm text-gray-600">Total Revenue</p>
-                  <p className="text-xl font-bold text-gray-900">
-                    {formatCurrency(
+                  <p className="text-xs text-gray-600">Total</p>
+                  <p className="text-sm sm:text-base lg:text-xl font-bold text-gray-900 truncate">
+                    {formatCompactCurrency(
                       revenueByPeriod.reduce(
                         (sum, item) => sum + (item.total || 0),
                         0,
@@ -596,9 +606,9 @@ export default function AdminRevenue() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Average</p>
-                  <p className="text-xl font-bold text-gray-900">
-                    {formatCurrency(
+                  <p className="text-xs text-gray-600">Average</p>
+                  <p className="text-sm sm:text-base lg:text-xl font-bold text-gray-900 truncate">
+                    {formatCompactCurrency(
                       revenueByPeriod.reduce(
                         (sum, item) => sum + (item.total || 0),
                         0,
@@ -607,9 +617,9 @@ export default function AdminRevenue() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Best Day</p>
-                  <p className="text-xl font-bold text-green-600">
-                    {formatCurrency(
+                  <p className="text-xs text-gray-600">Best</p>
+                  <p className="text-sm sm:text-base lg:text-xl font-bold text-green-600 truncate">
+                    {formatCompactCurrency(
                       Math.max(
                         ...revenueByPeriod.map((item) => item.total || 0),
                       ),
@@ -617,8 +627,8 @@ export default function AdminRevenue() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Total Bookings</p>
-                  <p className="text-xl font-bold text-gray-900">
+                  <p className="text-xs text-gray-600">Bookings</p>
+                  <p className="text-sm sm:text-base lg:text-xl font-bold text-gray-900">
                     {revenueByPeriod.reduce(
                       (sum, item) => sum + (item.count || 0),
                       0,
@@ -633,118 +643,122 @@ export default function AdminRevenue() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-white rounded-xl shadow-lg p-6"
+              className="bg-white rounded-lg sm:rounded-xl shadow p-4 sm:p-6"
             >
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <FaClock className="text-amber-600" />
-                Revenue by Day of Week
+                Revenue by Day
               </h2>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={revenueByDay}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis
-                    dataKey="day"
-                    stroke="#6b7280"
-                    tick={{ fontSize: 12, fill: "#374151" }}
-                  />
-                  <YAxis
-                    stroke="#6b7280"
-                    tick={{ fontSize: 12, fill: "#374151" }}
-                    tickFormatter={(value) =>
-                      `KES ${(value / 1000).toFixed(0)}k`
-                    }
-                  />
-                  <Tooltip
-                    content={({ active, payload, label }) => {
-                      if (active && payload && payload.length) {
-                        return (
-                          <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-200">
-                            <p className="text-sm text-gray-600 mb-1">
-                              {label}
-                            </p>
-                            <p className="font-bold text-amber-600">
-                              {formatCurrency(payload[0].value)}
-                            </p>
-                          </div>
-                        );
+              <div className="h-50 sm:h-62.5 lg:h-75">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={revenueByDay}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis
+                      dataKey="day"
+                      stroke="#6b7280"
+                      tick={{ fontSize: 10, fill: "#374151" }}
+                    />
+                    <YAxis
+                      stroke="#6b7280"
+                      tick={{ fontSize: 10, fill: "#374151" }}
+                      tickFormatter={(value) =>
+                        `KES ${(value / 1000).toFixed(0)}k`
                       }
-                      return null;
-                    }}
-                  />
-                  <Bar dataKey="revenue" fill="#f59e0b" radius={[4, 4, 0, 0]}>
-                    {revenueByDay.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={COLORS[index % COLORS.length]}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+                      width={40}
+                    />
+                    <Tooltip
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div className="bg-white p-2 rounded-lg shadow-lg border border-gray-200">
+                              <p className="text-xs text-gray-600 mb-1">
+                                {label}
+                              </p>
+                              <p className="font-bold text-amber-600 text-xs">
+                                {formatCurrency(payload[0].value)}
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Bar dataKey="revenue" fill="#f59e0b" radius={[4, 4, 0, 0]}>
+                      {revenueByDay.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </motion.div>
           </div>
         )}
 
         {/* Categories View */}
         {view === "categories" && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             {/* Revenue by Category Pie Chart */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="bg-white rounded-xl shadow-lg p-6"
+              className="bg-white rounded-lg sm:rounded-xl shadow p-4 sm:p-6"
             >
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <FaChartPie className="text-amber-600" />
                 Revenue by Category
               </h2>
 
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={revenueByCategory}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={5}
-                    dataKey="revenue"
-                    label={({ name, percent }) =>
-                      `${name} ${(percent * 100).toFixed(0)}%`
-                    }
-                    labelLine={{ stroke: "#6b7280", strokeWidth: 1 }}
-                  >
-                    {revenueByCategory.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={COLORS[index % COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    content={({ active, payload }) => {
-                      if (active && payload && payload.length) {
-                        return (
-                          <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-200">
-                            <p className="text-sm font-medium text-gray-900">
-                              {payload[0].name}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              Revenue: {formatCurrency(payload[0].value)}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              Count: {payload[0].payload.count}
-                            </p>
-                          </div>
-                        );
+              <div className="h-50 sm:h-62.5 lg:h-75">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={revenueByCategory}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={40}
+                      outerRadius={70}
+                      paddingAngle={5}
+                      dataKey="revenue"
+                      label={({ name, percent }) =>
+                        percent > 0.05
+                          ? `${name} ${(percent * 100).toFixed(0)}%`
+                          : ""
                       }
-                      return null;
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+                      labelLine={{ stroke: "#6b7280", strokeWidth: 1 }}
+                    >
+                      {revenueByCategory.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div className="bg-white p-2 rounded-lg shadow-lg border border-gray-200">
+                              <p className="text-xs font-medium text-gray-900">
+                                {payload[0].name}
+                              </p>
+                              <p className="text-xs text-gray-600">
+                                {formatCurrency(payload[0].value)}
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
 
-              <div className="mt-4 space-y-2">
+              <div className="mt-4 space-y-1 sm:space-y-2">
                 {revenueByCategory.map((category, index) => (
                   <div
                     key={category.name}
@@ -752,18 +766,18 @@ export default function AdminRevenue() {
                   >
                     <div className="flex items-center gap-2">
                       <div
-                        className="w-3 h-3 rounded-full"
+                        className="w-2 h-2 sm:w-3 sm:h-3 rounded-full"
                         style={{ backgroundColor: COLORS[index] }}
                       />
-                      <span className="text-sm text-gray-700">
+                      <span className="text-xs sm:text-sm text-gray-700">
                         {category.name}
                       </span>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-sm font-medium text-gray-900">
-                        {formatCurrency(category.revenue)}
+                    <div className="flex items-center gap-2 sm:gap-4">
+                      <span className="text-xs sm:text-sm font-medium text-gray-900">
+                        {formatCompactCurrency(category.revenue)}
                       </span>
-                      <span className="text-xs text-gray-600 w-16 text-right">
+                      <span className="text-xs text-gray-600 w-10 text-right">
                         {category.percentage}%
                       </span>
                     </div>
@@ -772,8 +786,8 @@ export default function AdminRevenue() {
               </div>
 
               <div className="mt-4 pt-4 border-t border-gray-200">
-                <p className="text-sm text-gray-600">Total Category Revenue</p>
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-xs text-gray-600">Total Category Revenue</p>
+                <p className="text-base sm:text-lg lg:text-2xl font-bold text-gray-900">
                   {formatCurrency(
                     revenueByCategory.reduce(
                       (sum, cat) => sum + cat.revenue,
@@ -788,38 +802,38 @@ export default function AdminRevenue() {
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="bg-white rounded-xl shadow-lg p-6"
+              className="bg-white rounded-lg sm:rounded-xl shadow p-4 sm:p-6"
             >
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <FaChartBar className="text-amber-600" />
-                Category Performance
+                Performance
               </h2>
 
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 {revenueByCategory.map((category, index) => (
                   <div key={category.name}>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700">
+                      <span className="text-xs sm:text-sm font-medium text-gray-700">
                         {category.name}
                       </span>
-                      <span className="text-sm text-gray-600">
+                      <span className="text-xs text-gray-600">
                         {category.count} bookings
                       </span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="w-full bg-gray-200 rounded-full h-1.5 sm:h-2">
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${category.percentage}%` }}
                         transition={{ duration: 1, delay: index * 0.1 }}
-                        className="bg-amber-600 h-2 rounded-full"
+                        className="bg-amber-600 h-1.5 sm:h-2 rounded-full"
                       />
                     </div>
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-xs text-gray-500">
-                        Avg: {formatCurrency(category.average)}
+                        Avg: {formatCompactCurrency(category.average)}
                       </span>
                       <span className="text-xs font-medium text-amber-600">
-                        {formatCurrency(category.revenue)}
+                        {formatCompactCurrency(category.revenue)}
                       </span>
                     </div>
                   </div>
@@ -828,26 +842,25 @@ export default function AdminRevenue() {
 
               {/* Category Insights */}
               <div className="mt-6 pt-6 border-t border-gray-200">
-                <h3 className="font-medium text-gray-900 mb-3">Insights</h3>
-                <div className="space-y-2">
-                  <p className="text-sm text-gray-700">
-                    Best performing:{" "}
-                    <span className="font-medium text-green-600">
-                      {revenueByCategory[0]?.name}
-                    </span>{" "}
-                    ({revenueByCategory[0]?.percentage}% of revenue)
-                  </p>
-                  <p className="text-sm text-gray-700">
-                    Average booking value by category ranges from{" "}
-                    {formatCurrency(
-                      Math.min(...revenueByCategory.map((c) => c.average)),
-                    )}{" "}
-                    to{" "}
-                    {formatCurrency(
-                      Math.max(...revenueByCategory.map((c) => c.average)),
-                    )}
-                  </p>
-                </div>
+                <h3 className="text-xs sm:text-sm font-medium text-gray-900 mb-2">
+                  Insights
+                </h3>
+                <p className="text-xs text-gray-700">
+                  Best:{" "}
+                  <span className="font-medium text-green-600">
+                    {revenueByCategory[0]?.name}
+                  </span>
+                </p>
+                <p className="text-xs text-gray-700 mt-1">
+                  Range:{" "}
+                  {formatCompactCurrency(
+                    Math.min(...revenueByCategory.map((c) => c.average)),
+                  )}{" "}
+                  -{" "}
+                  {formatCompactCurrency(
+                    Math.max(...revenueByCategory.map((c) => c.average)),
+                  )}
+                </p>
               </div>
             </motion.div>
           </div>
@@ -858,14 +871,61 @@ export default function AdminRevenue() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-xl shadow-lg p-6"
+            className="bg-white rounded-lg sm:rounded-xl shadow p-4 sm:p-6"
           >
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <FaCar className="text-amber-600" />
-              Top Performing Vehicles
+              Top Vehicles
             </h2>
 
-            <div className="overflow-x-auto">
+            {/* Mobile Card View */}
+            <div className="block lg:hidden space-y-3">
+              {topVehicles.slice(0, 5).map((vehicle, index) => (
+                <div key={vehicle.id} className="bg-gray-50 rounded-lg p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gray-200 rounded-lg overflow-hidden shrink-0">
+                      <img
+                        src={vehicle.image || "https://via.placeholder.com/40"}
+                        alt={vehicle.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm text-gray-900 truncate">
+                        {vehicle.name}
+                      </p>
+                      <p className="text-xs text-gray-500 capitalize">
+                        {vehicle.category}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 mt-2 text-center">
+                    <div>
+                      <p className="text-xs text-gray-600">Bookings</p>
+                      <p className="font-bold text-sm text-gray-900">
+                        {vehicle.bookings}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600">Revenue</p>
+                      <p className="font-bold text-xs text-amber-600 truncate">
+                        {formatCompactCurrency(vehicle.revenue)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600">Util.</p>
+                      <p className="font-bold text-sm text-gray-900">
+                        {vehicle.utilization}%
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table */}
+            <div className="hidden lg:block overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
@@ -914,26 +974,17 @@ export default function AdminRevenue() {
                             <p className="font-medium text-gray-900">
                               {vehicle.name}
                             </p>
-                            <p className="text-xs text-gray-500">
-                              {vehicle.licensePlate}
-                            </p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <span className="capitalize text-gray-700">
-                          {vehicle.category}
-                        </span>
+                      <td className="px-6 py-4 capitalize text-gray-700">
+                        {vehicle.category}
                       </td>
-                      <td className="px-6 py-4">
-                        <span className="font-bold text-gray-900">
-                          {vehicle.bookings}
-                        </span>
+                      <td className="px-6 py-4 font-bold text-gray-900">
+                        {vehicle.bookings}
                       </td>
-                      <td className="px-6 py-4">
-                        <span className="font-medium text-amber-600">
-                          {formatCurrency(vehicle.revenue)}
-                        </span>
+                      <td className="px-6 py-4 font-medium text-amber-600">
+                        {formatCurrency(vehicle.revenue)}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
@@ -950,11 +1001,7 @@ export default function AdminRevenue() {
                       </td>
                       <td className="px-6 py-4">
                         <span
-                          className={`flex items-center gap-1 font-medium ${
-                            vehicle.growth > 0
-                              ? "text-green-600"
-                              : "text-red-600"
-                          }`}
+                          className={`flex items-center gap-1 text-sm font-medium ${vehicle.growth > 0 ? "text-green-600" : "text-red-600"}`}
                         >
                           {vehicle.growth > 0 ? <FaArrowUp /> : <FaArrowDown />}
                           {Math.abs(vehicle.growth)}%
@@ -968,7 +1015,9 @@ export default function AdminRevenue() {
 
             {topVehicles.length === 0 && (
               <div className="text-center py-8">
-                <p className="text-gray-600">No vehicle data available</p>
+                <p className="text-xs sm:text-sm text-gray-600">
+                  No vehicle data available
+                </p>
               </div>
             )}
           </motion.div>
@@ -976,62 +1025,66 @@ export default function AdminRevenue() {
 
         {/* Payments View */}
         {view === "payments" && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             {/* Payment Methods */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="bg-white rounded-xl shadow-lg p-6"
+              className="bg-white rounded-lg sm:rounded-xl shadow p-4 sm:p-6"
             >
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <FaWallet className="text-amber-600" />
                 Payment Methods
               </h2>
 
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie
-                    data={revenueByPayment}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="amount"
-                    label={({ name, percent }) =>
-                      `${name} ${(percent * 100).toFixed(0)}%`
-                    }
-                    labelLine={{ stroke: "#6b7280", strokeWidth: 1 }}
-                  >
-                    {revenueByPayment.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={COLORS[index % COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    content={({ active, payload }) => {
-                      if (active && payload && payload.length) {
-                        return (
-                          <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-200">
-                            <p className="text-sm font-medium text-gray-900 capitalize">
-                              {payload[0].name}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              Amount: {formatCurrency(payload[0].value)}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              Transactions: {payload[0].payload.count}
-                            </p>
-                          </div>
-                        );
+              <div className="h-45 sm:h-50 lg:h-62.5">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={revenueByPayment}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={40}
+                      outerRadius={60}
+                      paddingAngle={5}
+                      dataKey="amount"
+                      label={({ name, percent }) =>
+                        percent > 0.05
+                          ? `${name} ${(percent * 100).toFixed(0)}%`
+                          : ""
                       }
-                      return null;
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+                      labelLine={{ stroke: "#6b7280", strokeWidth: 1 }}
+                    >
+                      {revenueByPayment.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div className="bg-white p-2 rounded-lg shadow-lg border border-gray-200">
+                              <p className="text-xs font-medium text-gray-900 capitalize">
+                                {payload[0].name}
+                              </p>
+                              <p className="text-xs text-gray-600">
+                                {formatCurrency(payload[0].value)}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {payload[0].payload.count} txns
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
 
               <div className="mt-4 space-y-2">
                 {revenueByPayment.map((method, index) => (
@@ -1041,19 +1094,19 @@ export default function AdminRevenue() {
                   >
                     <div className="flex items-center gap-2">
                       <div
-                        className="w-3 h-3 rounded-full"
+                        className="w-2 h-2 sm:w-3 sm:h-3 rounded-full"
                         style={{ backgroundColor: COLORS[index] }}
                       />
-                      <span className="text-sm text-gray-700 capitalize">
+                      <span className="text-xs sm:text-sm text-gray-700 capitalize">
                         {method.name}
                       </span>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-sm font-medium text-gray-900">
-                        {formatCurrency(method.amount)}
+                    <div className="flex items-center gap-2 sm:gap-4">
+                      <span className="text-xs sm:text-sm font-medium text-gray-900">
+                        {formatCompactCurrency(method.amount)}
                       </span>
                       <span className="text-xs text-gray-600">
-                        {method.count} txns
+                        {method.count}
                       </span>
                     </div>
                   </div>
@@ -1065,69 +1118,66 @@ export default function AdminRevenue() {
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="bg-white rounded-xl shadow-lg p-6"
+              className="bg-white rounded-lg sm:rounded-xl shadow p-4 sm:p-6"
             >
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <FaClock className="text-amber-600" />
-                Outstanding Payments
+                Outstanding
               </h2>
 
               {outstanding.length > 0 ? (
-                <div className="space-y-3">
-                  {outstanding.map((payment) => (
+                <div className="space-y-3 max-h-75 overflow-y-auto">
+                  {outstanding.slice(0, 5).map((payment) => (
                     <div
                       key={payment.id}
-                      className="p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200"
+                      className="p-2 sm:p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200"
                     >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium text-gray-900">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium text-xs sm:text-sm text-gray-900 truncate">
                           {payment.customerName}
                         </span>
-                        <span className="text-sm text-gray-600">
+                        <span className="text-xs text-gray-600">
                           {payment.bookingId}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-700">
-                          Amount:{" "}
-                          <span className="font-medium text-amber-600">
-                            {formatCurrency(payment.amount)}
-                          </span>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-700 font-medium">
+                          {formatCompactCurrency(payment.amount)}
                         </span>
                         <span className="text-gray-600">
-                          Due: {new Date(payment.dueDate).toLocaleDateString()}
+                          {new Date(payment.dueDate).toLocaleDateString()}
                         </span>
                       </div>
-                      <div className="mt-2 flex gap-2">
-                        <button className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors font-medium">
-                          Mark Paid
+                      <div className="flex gap-2 mt-2">
+                        <button className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700">
+                          Paid
                         </button>
-                        <button className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors font-medium">
-                          Send Reminder
+                        <button className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+                          Remind
                         </button>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8">
-                  <FaCheckCircle className="text-5xl text-green-500 mx-auto mb-3" />
-                  <p className="text-gray-900 font-medium mb-1">
-                    No outstanding payments
+                <div className="text-center py-6 sm:py-8">
+                  <FaCheckCircle className="text-3xl sm:text-4xl text-green-500 mx-auto mb-2" />
+                  <p className="text-sm sm:text-base text-gray-900 font-medium">
+                    All paid
                   </p>
-                  <p className="text-sm text-gray-600">
-                    All payments are up to date
+                  <p className="text-xs text-gray-600">
+                    No outstanding payments
                   </p>
                 </div>
               )}
 
               <div className="mt-4 pt-4 border-t border-gray-200">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-700 font-medium">
-                    Total Outstanding
+                  <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                    Total
                   </span>
-                  <span className="text-xl font-bold text-orange-600">
-                    {formatCurrency(stats?.outstandingPayments || 0)}
+                  <span className="text-sm sm:text-base lg:text-xl font-bold text-orange-600">
+                    {formatCompactCurrency(stats?.outstandingPayments || 0)}
                   </span>
                 </div>
               </div>
@@ -1142,43 +1192,42 @@ export default function AdminRevenue() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3"
               onClick={() => setSelectedInvoice(null)}
             >
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-white rounded-xl max-w-2xl w-full"
+                className="bg-white rounded-lg sm:rounded-xl max-w-lg w-full"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-2xl font-bold text-gray-900">
-                      Invoice Details
+                <div className="p-4 sm:p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-base sm:text-lg font-bold text-gray-900">
+                      Invoice
                     </h2>
                     <button
                       onClick={() => setSelectedInvoice(null)}
-                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                      className="p-1.5 hover:bg-gray-100 rounded-lg"
                     >
-                      <FaTimesCircle className="text-gray-500 text-xl" />
+                      <FaTimesCircle className="text-gray-500 text-lg" />
                     </button>
                   </div>
 
-                  {/* Invoice content would go here */}
-                  <div className="text-center py-8 text-gray-600">
-                    Invoice details for {selectedInvoice.bookingId}
+                  <div className="text-center py-6 text-xs sm:text-sm text-gray-600">
+                    Invoice #{selectedInvoice.bookingId}
                   </div>
 
-                  <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                  <div className="flex justify-end gap-2 pt-4 border-t border-gray-200">
                     <button
                       onClick={() => setSelectedInvoice(null)}
-                      className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 font-medium"
+                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700"
                     >
                       Close
                     </button>
-                    <button className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors flex items-center gap-2 font-medium">
-                      <FaDownload />
+                    <button className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 flex items-center gap-2">
+                      <FaDownload className="text-xs" />
                       Download
                     </button>
                   </div>

@@ -49,7 +49,7 @@ export default function Navbar({ user }) {
         scrolled ? "bg-white/95 backdrop-blur-md shadow-lg" : "bg-transparent"
       }`}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-4 lg:px-6">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2 group">
@@ -58,13 +58,7 @@ export default function Navbar({ user }) {
               whileTap={{ scale: 0.95 }}
               className="w-10 h-10 bg-linear-to-r from-amber-500 to-amber-700 rounded-lg flex items-center justify-center shadow-md group-hover:shadow-amber-500/30 transition-shadow"
             >
-              <span
-                className="text-white text-xl"
-                role="img"
-                aria-label="SkyDrive Logo"
-              >
-                ✈️
-              </span>
+              <span className="text-white font-bold text-lg">S</span>
             </motion.div>
             <span className="font-bold text-xl bg-linear-to-r from-amber-700 to-amber-900 bg-clip-text text-transparent">
               SkyDrive
@@ -111,7 +105,7 @@ export default function Navbar({ user }) {
                   aria-expanded={dropdownOpen}
                   aria-haspopup="true"
                 >
-                  <div className="w-8 h-8 bg-linear-to-r from-amber-600 to-amber-700 rounded-full flex items-center justify-center shadow-sm">
+                  <div className="w-10 h-10 bg-linear-to-r from-amber-600 to-amber-700 rounded-full flex items-center justify-center shadow-sm">
                     <span className="text-white text-sm font-medium">
                       {getUserInitials()}
                     </span>
@@ -235,14 +229,19 @@ export default function Navbar({ user }) {
           {/* Mobile menu button */}
           <button
             onClick={() => setIsOpen(!isOpen)}
-            className="md:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            className={`md:hidden p-2 rounded-lg transition-all duration-200 ${
+              scrolled
+                ? "hover:bg-gray-100 text-gray-900 bg-gray-100/50"
+                : "hover:bg-white/20 text-white bg-black/20 backdrop-blur-sm"
+            }`}
             aria-label="Toggle menu"
             aria-expanded={isOpen}
           >
             <svg
-              className="w-6 h-6"
+              className="w-8 h-8" // Increased size
               fill="none"
               stroke="currentColor"
+              strokeWidth={2.5} // Increased stroke width
               viewBox="0 0 24 24"
               aria-hidden="true"
             >
@@ -250,14 +249,12 @@ export default function Navbar({ user }) {
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  strokeWidth={2}
                   d="M6 18L18 6M6 6l12 12"
                 />
               ) : (
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  strokeWidth={2}
                   d="M4 6h16M4 12h16M4 18h16"
                 />
               )}
@@ -300,28 +297,28 @@ export default function Navbar({ user }) {
                 className="block py-2 px-3 text-gray-700 hover:bg-amber-50 hover:text-amber-600 rounded-lg transition-colors"
                 onClick={() => setIsOpen(false)}
               >
-                🚗 Fleet
+                Fleet
               </Link>
               <Link
                 to="/bookings"
                 className="block py-2 px-3 text-gray-700 hover:bg-amber-50 hover:text-amber-600 rounded-lg transition-colors"
                 onClick={() => setIsOpen(false)}
               >
-                📅 Bookings
+                Bookings
               </Link>
               <Link
                 to="/about"
                 className="block py-2 px-3 text-gray-700 hover:bg-amber-50 hover:text-amber-600 rounded-lg transition-colors"
                 onClick={() => setIsOpen(false)}
               >
-                ℹ️ About
+                About
               </Link>
               <Link
                 to="/contact"
                 className="block py-2 px-3 text-gray-700 hover:bg-amber-50 hover:text-amber-600 rounded-lg transition-colors"
                 onClick={() => setIsOpen(false)}
               >
-                📞 Contact
+                Contact
               </Link>
 
               {/* Mobile User Menu (if logged in) */}

@@ -5,6 +5,7 @@ import { checkBookingConflict } from "../.server/bookingCheck.js";
 const db = client.db("SkyDrive");
 const bookingsCollection = db.collection("bookings");
 const usersCollection = db.collection("user");
+const vehiclesCollection = db.collection("fleet");
 
 // Helper to generate a readable booking ID
 function generateBookingId() {
@@ -826,5 +827,732 @@ export async function updateVehicleStats(vehicleId) {
   } catch (error) {
     console.error("❌ Error updating vehicle stats:", error);
     return false;
+  }
+}
+
+export async function deleteBooking(bookingId, permanent = false) {
+  const session = client.startSession();
+
+  try {
+    console.log("=".repeat(50));
+    console.log("🗑️ deleteBooking called:", { bookingId, permanent });
+    console.log("=".repeat(50));
+
+    let result;
+
+    await session.withTransaction(async () => {
+      // First get the booking to know its vehicleId and userId
+      const booking = await bookingsCollection.findOne(
+        { _id: normalizeObjectId(bookingId) },
+        { session },
+      );
+
+      if (!booking) {
+        throw new Error(`Booking not found with ID: ${bookingId}`);
+      }
+
+      if (permanent) {
+        // Permanent deletion - remove from database
+        result = await bookingsCollection.deleteOne(
+          { _id: booking._id },
+          { session },
+        );
+
+        // Also remove from user's bookings array
+        if (booking.userId) {
+          await usersCollection.updateOne(
+            { _id: booking.userId },
+            {
+              $pull: { bookings: { bookingId: booking._id } },
+              $set: { updatedAt: new Date() },
+            },
+            { session },
+          );
+        }
+
+        console.log("✅ Booking permanently deleted");
+      } else {
+        // Soft delete - just mark as deleted
+        result = await bookingsCollection.updateOne(
+          { _id: booking._id },
+          {
+            $set: {
+              status: "deleted",
+              isDeleted: true,
+              deletedAt: new Date(),
+              updatedAt: new Date(),
+            },
+          },
+          { session },
+        );
+
+        // Update user's bookings array status
+        if (booking.userId) {
+          await usersCollection.updateOne(
+            {
+              _id: booking.userId,
+              "bookings.bookingId": booking._id,
+            },
+            {
+              $set: {
+                "bookings.$.status": "deleted",
+                updatedAt: new Date(),
+              },
+            },
+            { session },
+          );
+        }
+
+        console.log("✅ Booking soft deleted (marked as deleted)");
+      }
+
+      // Update vehicle availability
+      if (booking.vehicleId) {
+        await updateVehicleAvailability(booking.vehicleId);
+      }
+    });
+
+    return {
+      success: true,
+      message: permanent
+        ? "Booking permanently deleted"
+        : "Booking moved to trash",
+      deletedCount: result?.deletedCount || 0,
+      modifiedCount: result?.modifiedCount || 0,
+    };
+  } catch (error) {
+    console.error("❌ deleteBooking error:", error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  } finally {
+    await session.endSession();
+  }
+}
+
+/**
+ * 📝 CREATE - Create a new booking (admin version)
+ */
+export async function createBooking(bookingData) {
+  const session = client.startSession();
+
+  try {
+    console.log("=".repeat(50));
+    console.log("📝 createBooking (admin) called");
+    console.log("=".repeat(50));
+
+    // Basic validation
+    if (
+      !bookingData.vehicleId ||
+      !bookingData.customerName ||
+      !bookingData.customerEmail
+    ) {
+      throw new Error("Missing required booking information");
+    }
+
+    let result;
+    let bookingDoc;
+
+    await session.withTransaction(async () => {
+      // Check for conflicts
+      const conflictResult = await checkBookingConflict(
+        bookingData.vehicleId,
+        bookingData.pickupDate,
+        bookingData.pickupTime,
+        bookingData.duration,
+      );
+
+      if (conflictResult.hasConflict) {
+        throw new Error("Vehicle is already booked for this time slot");
+      }
+
+      // Create booking document
+      bookingDoc = {
+        bookingId: generateBookingId(),
+        ...bookingData,
+        vehicleId: normalizeVehicleId(bookingData.vehicleId),
+        userId: bookingData.userId ? normalizeUserId(bookingData.userId) : null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        status: bookingData.status || "pending_verification",
+        paymentStatus: bookingData.paymentStatus || "pending",
+        specialRequests: bookingData.specialRequests || "",
+        pickupLocation: bookingData.pickupLocation || "Nairobi CBD",
+        dropoffLocation:
+          bookingData.dropoffLocation ||
+          bookingData.pickupLocation ||
+          "Nairobi CBD",
+        passengers: bookingData.passengers || 1,
+        paymentMethod: bookingData.paymentMethod || "card",
+        paymentMetadata: bookingData.paymentMetadata || {},
+      };
+
+      result = await bookingsCollection.insertOne(bookingDoc, { session });
+
+      // If user exists, add to their bookings array
+      if (bookingData.userId) {
+        await usersCollection.updateOne(
+          { _id: normalizeUserId(bookingData.userId) },
+          {
+            $push: {
+              bookings: {
+                bookingId: result.insertedId,
+                bookingNumber: bookingDoc.bookingId,
+                vehicleName: bookingData.vehicleName,
+                vehicleImage: bookingData.vehicleImage,
+                pickupDate: bookingData.pickupDate,
+                pickupTime: bookingData.pickupTime,
+                duration: bookingData.duration,
+                totalAmount: bookingData.totalAmount,
+                status: bookingDoc.status,
+                paymentStatus: bookingDoc.paymentStatus,
+                createdAt: new Date(),
+              },
+            },
+            $set: { updatedAt: new Date() },
+          },
+          { session },
+        );
+      }
+
+      // Update vehicle stats if booking is confirmed
+      if (bookingDoc.status === "confirmed") {
+        await vehiclesCollection.updateOne(
+          { _id: bookingDoc.vehicleId },
+          {
+            $inc: { bookingsCount: 1 },
+            $set: { updatedAt: new Date() },
+          },
+          { session },
+        );
+      }
+    });
+
+    return {
+      success: true,
+      bookingId: result.insertedId.toString(),
+      bookingNumber: bookingDoc.bookingId,
+      message: "Booking created successfully",
+    };
+  } catch (error) {
+    console.error("❌ createBooking error:", error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  } finally {
+    await session.endSession();
+  }
+}
+
+/**
+ * 📝 UPDATE - Update an existing booking
+ */
+export async function updateBooking(bookingId, bookingData) {
+  const session = client.startSession();
+
+  try {
+    console.log("=".repeat(50));
+    console.log("📝 updateBooking called:", { bookingId });
+    console.log("=".repeat(50));
+
+    let result;
+
+    await session.withTransaction(async () => {
+      // Get current booking
+      const currentBooking = await bookingsCollection.findOne(
+        { _id: normalizeObjectId(bookingId) },
+        { session },
+      );
+
+      if (!currentBooking) {
+        throw new Error(`Booking not found: ${bookingId}`);
+      }
+
+      // Check if vehicle or time changed - if so, check for conflicts
+      if (
+        (bookingData.vehicleId &&
+          bookingData.vehicleId !== currentBooking.vehicleId.toString()) ||
+        (bookingData.pickupDate &&
+          bookingData.pickupDate !== currentBooking.pickupDate) ||
+        (bookingData.pickupTime &&
+          bookingData.pickupTime !== currentBooking.pickupTime) ||
+        (bookingData.duration &&
+          bookingData.duration !== currentBooking.duration)
+      ) {
+        const conflictResult = await checkBookingConflict(
+          bookingData.vehicleId || currentBooking.vehicleId,
+          bookingData.pickupDate || currentBooking.pickupDate,
+          bookingData.pickupTime || currentBooking.pickupTime,
+          bookingData.duration || currentBooking.duration,
+          bookingId, // Exclude current booking from conflict check
+        );
+
+        if (conflictResult.hasConflict) {
+          throw new Error("Vehicle is already booked for this time slot");
+        }
+      }
+
+      // Prepare update data
+      const updateData = {
+        ...bookingData,
+        updatedAt: new Date(),
+      };
+
+      // Convert ObjectId fields
+      if (updateData.vehicleId)
+        updateData.vehicleId = normalizeVehicleId(updateData.vehicleId);
+      if (updateData.userId)
+        updateData.userId = normalizeUserId(updateData.userId);
+
+      // Remove fields that shouldn't be updated
+      delete updateData._id;
+      delete updateData.bookingId;
+      delete updateData.createdAt;
+
+      result = await bookingsCollection.updateOne(
+        { _id: normalizeObjectId(bookingId) },
+        { $set: updateData },
+        { session },
+      );
+
+      // Update user's bookings array if needed
+      if (
+        currentBooking.userId &&
+        (bookingData.status || bookingData.paymentStatus)
+      ) {
+        await usersCollection.updateOne(
+          {
+            _id: currentBooking.userId,
+            "bookings.bookingId": normalizeObjectId(bookingId),
+          },
+          {
+            $set: {
+              "bookings.$.status": bookingData.status || currentBooking.status,
+              "bookings.$.paymentStatus":
+                bookingData.paymentStatus || currentBooking.paymentStatus,
+              updatedAt: new Date(),
+            },
+          },
+          { session },
+        );
+      }
+
+      // Update vehicle stats if status changed to/from confirmed
+      if (bookingData.status && bookingData.status !== currentBooking.status) {
+        if (
+          bookingData.status === "confirmed" &&
+          currentBooking.status !== "confirmed"
+        ) {
+          // Booking was just confirmed
+          await vehiclesCollection.updateOne(
+            { _id: currentBooking.vehicleId },
+            {
+              $inc: { bookingsCount: 1 },
+              $set: { updatedAt: new Date() },
+            },
+            { session },
+          );
+        } else if (
+          currentBooking.status === "confirmed" &&
+          bookingData.status !== "confirmed"
+        ) {
+          // Booking was unconfirmed
+          await vehiclesCollection.updateOne(
+            { _id: currentBooking.vehicleId },
+            {
+              $inc: { bookingsCount: -1 },
+              $set: { updatedAt: new Date() },
+            },
+            { session },
+          );
+        }
+      }
+
+      // Update vehicle availability
+      if (bookingData.vehicleId || bookingData.status) {
+        await updateVehicleAvailability(currentBooking.vehicleId);
+        if (
+          bookingData.vehicleId &&
+          bookingData.vehicleId !== currentBooking.vehicleId.toString()
+        ) {
+          await updateVehicleAvailability(
+            normalizeVehicleId(bookingData.vehicleId),
+          );
+        }
+      }
+    });
+
+    return {
+      success: true,
+      message: "Booking updated successfully",
+      modifiedCount: result?.modifiedCount || 0,
+    };
+  } catch (error) {
+    console.error("❌ updateBooking error:", error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  } finally {
+    await session.endSession();
+  }
+}
+
+/**
+ * 📊 Get all bookings with filters (admin version)
+ */
+export async function getAllBookings(filters = {}) {
+  try {
+    const {
+      status,
+      page = 1,
+      limit = 10,
+      search = "",
+      startDate,
+      endDate,
+      userId,
+      vehicleId,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+      includeDeleted = false,
+    } = filters;
+
+    const query = {};
+
+    if (!includeDeleted) {
+      query.isDeleted = { $ne: true };
+    }
+
+    if (status && status !== "all") query.status = status;
+    if (userId) query.userId = normalizeUserId(userId);
+    if (vehicleId) query.vehicleId = normalizeVehicleId(vehicleId);
+
+    // Search by customer name, email, or booking ID
+    if (search) {
+      query.$or = [
+        { customerName: { $regex: search, $options: "i" } },
+        { customerEmail: { $regex: search, $options: "i" } },
+        { bookingId: { $regex: search, $options: "i" } },
+        { customerPhone: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // Date range filter
+    if (startDate || endDate) {
+      query.pickupDate = {};
+      if (startDate) query.pickupDate.$gte = startDate;
+      if (endDate) query.pickupDate.$lte = endDate;
+    }
+
+    const bookings = await bookingsCollection
+      .find(query)
+      .sort({ [sortBy]: sortOrder === "desc" ? -1 : 1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .toArray();
+
+    const total = await bookingsCollection.countDocuments(query);
+
+    // Get vehicle and user details
+    const bookingsWithDetails = await Promise.all(
+      bookings.map(async (booking) => {
+        // Get vehicle details
+        if (booking.vehicleId) {
+          const vehicle = await vehiclesCollection.findOne(
+            { _id: booking.vehicleId },
+            { projection: { name: 1, image: 1, category: 1, licensePlate: 1 } },
+          );
+          booking.vehicle = vehicle;
+          booking.vehicleName = vehicle?.name || booking.vehicleName;
+          booking.vehicleImage = vehicle?.image || booking.vehicleImage;
+          booking.vehicleCategory =
+            vehicle?.category || booking.vehicleCategory;
+        }
+
+        // Get user details
+        if (booking.userId) {
+          const user = await usersCollection.findOne(
+            { _id: booking.userId },
+            { projection: { password: 0 } },
+          );
+          booking.user = user;
+        }
+
+        return booking;
+      }),
+    );
+
+    return {
+      bookings: bookingsWithDetails,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    };
+  } catch (error) {
+    console.error("❌ Error getting all bookings:", error);
+    return {
+      bookings: [],
+      pagination: { page: 1, limit: 10, total: 0, pages: 0 },
+    };
+  }
+}
+
+/**
+ * 📊 Get booking statistics
+ */
+export async function getBookingStats() {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const [
+      total,
+      pending,
+      confirmed,
+      completed,
+      cancelled,
+      deleted,
+      todayBookings,
+      weekBookings,
+      monthBookings,
+      totalRevenue,
+      monthRevenue,
+      weekRevenue,
+      byPaymentMethod,
+      byCategory,
+    ] = await Promise.all([
+      // Total counts by status
+      bookingsCollection.countDocuments({ isDeleted: { $ne: true } }),
+      bookingsCollection.countDocuments({
+        status: "pending_verification",
+        isDeleted: { $ne: true },
+      }),
+      bookingsCollection.countDocuments({
+        status: "confirmed",
+        isDeleted: { $ne: true },
+      }),
+      bookingsCollection.countDocuments({
+        status: "completed",
+        isDeleted: { $ne: true },
+      }),
+      bookingsCollection.countDocuments({
+        status: "cancelled",
+        isDeleted: { $ne: true },
+      }),
+      bookingsCollection.countDocuments({ isDeleted: true }),
+
+      // Bookings by time period
+      bookingsCollection.countDocuments({
+        createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+        isDeleted: { $ne: true },
+      }),
+      bookingsCollection.countDocuments({
+        createdAt: { $gte: startOfWeek },
+        isDeleted: { $ne: true },
+      }),
+      bookingsCollection.countDocuments({
+        createdAt: { $gte: startOfMonth },
+        isDeleted: { $ne: true },
+      }),
+
+      // Revenue
+      bookingsCollection
+        .aggregate([
+          { $match: { paymentStatus: "paid", isDeleted: { $ne: true } } },
+          { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+        ])
+        .toArray(),
+
+      bookingsCollection
+        .aggregate([
+          {
+            $match: {
+              paymentStatus: "paid",
+              createdAt: { $gte: startOfMonth },
+              isDeleted: { $ne: true },
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+        ])
+        .toArray(),
+
+      bookingsCollection
+        .aggregate([
+          {
+            $match: {
+              paymentStatus: "paid",
+              createdAt: { $gte: startOfWeek },
+              isDeleted: { $ne: true },
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+        ])
+        .toArray(),
+
+      // Stats by payment method
+      bookingsCollection
+        .aggregate([
+          { $match: { paymentStatus: "paid", isDeleted: { $ne: true } } },
+          {
+            $group: {
+              _id: "$paymentMethod",
+              count: { $sum: 1 },
+              total: { $sum: "$totalAmount" },
+            },
+          },
+        ])
+        .toArray(),
+
+      // Stats by vehicle category
+      bookingsCollection
+        .aggregate([
+          { $match: { isDeleted: { $ne: true } } },
+          { $group: { _id: "$vehicleCategory", count: { $sum: 1 } } },
+        ])
+        .toArray(),
+    ]);
+
+    return {
+      total,
+      pending,
+      confirmed,
+      completed,
+      cancelled,
+      deleted,
+      todayBookings,
+      weekBookings,
+      monthBookings,
+      revenue: totalRevenue[0]?.total || 0,
+      monthRevenue: monthRevenue[0]?.total || 0,
+      weekRevenue: weekRevenue[0]?.total || 0,
+      byPaymentMethod: byPaymentMethod.reduce((acc, item) => {
+        acc[item._id || "other"] = { count: item.count, total: item.total };
+        return acc;
+      }, {}),
+      byCategory: byCategory.reduce((acc, item) => {
+        acc[item._id || "other"] = item.count;
+        return acc;
+      }, {}),
+      averageBookingValue:
+        total > 0 ? (totalRevenue[0]?.total || 0) / total : 0,
+      completionRate: total > 0 ? (completed / total) * 100 : 0,
+    };
+  } catch (error) {
+    console.error("❌ Error getting booking stats:", error);
+    return {
+      total: 0,
+      pending: 0,
+      confirmed: 0,
+      completed: 0,
+      cancelled: 0,
+      deleted: 0,
+      todayBookings: 0,
+      weekBookings: 0,
+      monthBookings: 0,
+      revenue: 0,
+      monthRevenue: 0,
+      weekRevenue: 0,
+      byPaymentMethod: {},
+      byCategory: {},
+      averageBookingValue: 0,
+      completionRate: 0,
+    };
+  }
+}
+
+/**
+ * 🔄 Restore a soft-deleted booking
+ */
+export async function restoreBooking(bookingId) {
+  try {
+    const result = await bookingsCollection.updateOne(
+      { _id: normalizeObjectId(bookingId) },
+      {
+        $set: {
+          isDeleted: false,
+          status: "pending_verification",
+          restoredAt: new Date(),
+          updatedAt: new Date(),
+        },
+        $unset: { deletedAt: "" },
+      },
+    );
+
+    if (result.modifiedCount > 0) {
+      // Get the booking to update user's array
+      const booking = await bookingsCollection.findOne({
+        _id: normalizeObjectId(bookingId),
+      });
+
+      if (booking && booking.userId) {
+        await usersCollection.updateOne(
+          {
+            _id: booking.userId,
+            "bookings.bookingId": normalizeObjectId(bookingId),
+          },
+          {
+            $set: {
+              "bookings.$.status": "pending_verification",
+              updatedAt: new Date(),
+            },
+          },
+        );
+      }
+    }
+
+    return {
+      success: result.modifiedCount > 0,
+      message:
+        result.modifiedCount > 0
+          ? "Booking restored successfully"
+          : "Booking not found",
+    };
+  } catch (error) {
+    console.error("❌ Error restoring booking:", error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
+/**
+ * 🚗 Update vehicle availability based on bookings
+ */
+export async function updateVehicleAvailability(vehicleId) {
+  try {
+    const today = new Date().toISOString().split("T")[0];
+
+    const activeBookings = await bookingsCollection.countDocuments({
+      vehicleId: normalizeVehicleId(vehicleId),
+      status: { $in: ["confirmed", "pending_verification"] },
+      pickupDate: { $gte: today },
+      isDeleted: { $ne: true },
+    });
+
+    const status = activeBookings > 0 ? "booked" : "available";
+
+    await vehiclesCollection.updateOne(
+      { _id: normalizeVehicleId(vehicleId) },
+      {
+        $set: {
+          status,
+          updatedAt: new Date(),
+          activeBookings,
+        },
+      },
+    );
+
+    return { success: true, status, activeBookings };
+  } catch (error) {
+    console.error("❌ Error updating vehicle availability:", error);
+    return { success: false };
   }
 }

@@ -140,7 +140,7 @@ export default function Hero() {
   return (
     <section
       ref={heroRef}
-      className="relative min-h-screen overflow-hidden bg-slate-900 pt-20"
+      className="relative min-h-screen overflow-hidden bg-slate-900 pt-10"
     >
       {/* Background Image with Overlay */}
       <div className="absolute inset-0">
@@ -160,14 +160,6 @@ export default function Hero() {
           animate={loaded ? "visible" : "hidden"}
           className="max-w-2xl"
         >
-          {/* Overline */}
-          <motion.p
-            variants={itemVariants}
-            className="text-sm font-medium text-amber-400 uppercase tracking-widest mb-6"
-          >
-            ✈️ Premium Mobility Across Africa
-          </motion.p>
-
           {/* Main Headline */}
           <motion.h1
             variants={itemVariants}

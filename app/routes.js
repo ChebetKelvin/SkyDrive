@@ -8,11 +8,11 @@ export default [
   route("booking-confirmation/:id", "routes/confirmation.jsx"),
   route("api/bookings", "routes/api.bookings.js"),
   route("login", "routes/login.jsx"),
-
   route("logout", "routes/logout.jsx"),
   route("register", "routes/signup.jsx"),
   route("dashboard", "routes/dashboard.jsx"),
   route("auth/google", "routes/auth.google.js"),
+
   route("bookings", "routes/bookingId.jsx"),
   route("about", "routes/about.jsx"),
   route("contact", "routes/contact.jsx"),
