@@ -104,11 +104,24 @@ export default function Login() {
   let [focusedField, setFocusedField] = useState(null);
   let [showDemoAlert, setShowDemoAlert] = useState(true);
   let [toastMessage, setToastMessage] = useState(null);
+  let [isMobile, setIsMobile] = useState(false);
 
   // Refs for confetti triggers
   let loginButtonRef = useRef(null);
   let emailInputRef = useRef(null);
   let passwordInputRef = useRef(null);
+
+  // Check if mobile on mount and resize
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   // Clear toast message after 5 seconds
   useEffect(() => {
@@ -136,12 +149,12 @@ export default function Login() {
   // Confetti functions
   const triggerWelcomeConfetti = () => {
     confetti({
-      particleCount: 100,
+      particleCount: isMobile ? 50 : 100, // Less particles on mobile
       spread: 70,
       origin: { y: 0.6 },
       colors: ["#f59e0b", "#d97706", "#fbbf24", "#ffffff", "#92400e"],
       decay: 0.9,
-      startVelocity: 30,
+      startVelocity: isMobile ? 25 : 30,
     });
   };
 
@@ -153,20 +166,23 @@ export default function Login() {
       const y = (rect.top + rect.height / 2) / window.innerHeight;
 
       confetti({
-        particleCount: 80,
-        spread: 60,
+        particleCount: isMobile ? 40 : 80,
+        spread: 50,
         origin: { x, y },
         colors: ["#f59e0b", "#d97706", "#fbbf24", "#ffffff"],
-        startVelocity: 35,
+        startVelocity: isMobile ? 25 : 35,
         decay: 0.9,
-        ticks: 300,
+        ticks: isMobile ? 200 : 300,
       });
     }
   };
 
-  // Throttled hover confetti
+  // Throttled hover confetti - disabled on mobile
   const throttledHoverConfetti = useCallback(
     throttle((e) => {
+      // Don't trigger confetti on mobile devices
+      if (isMobile) return;
+
       const rect = e.currentTarget.getBoundingClientRect();
       const x = (rect.left + rect.width / 2) / window.innerWidth;
       const y = (rect.top + rect.height / 2) / window.innerHeight;
@@ -182,7 +198,7 @@ export default function Login() {
         gravity: 0.6,
       });
     }, 500),
-    [],
+    [isMobile],
   );
 
   // Auto-fill demo credentials
@@ -191,8 +207,14 @@ export default function Login() {
       emailInputRef.current.value = "john@example.com";
       passwordInputRef.current.value = "password123";
 
+      // Trigger success event for React state
+      const emailEvent = new Event("input", { bubbles: true });
+      const passwordEvent = new Event("input", { bubbles: true });
+      emailInputRef.current.dispatchEvent(emailEvent);
+      passwordInputRef.current.dispatchEvent(passwordEvent);
+
       confetti({
-        particleCount: 20,
+        particleCount: isMobile ? 15 : 20,
         spread: 30,
         origin: { y: 0.5 },
         colors: ["#10b981", "#34d399"],
@@ -216,8 +238,16 @@ export default function Login() {
     }
   };
 
+  // Handle touch events properly on mobile
+  const handleTouchStart = useCallback((e) => {
+    // Prevent default to avoid double-tap zoom on buttons
+    if (e.currentTarget.tagName === "BUTTON") {
+      e.preventDefault();
+    }
+  }, []);
+
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-amber-50 flex pt-15 items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-amber-50 flex items-center justify-center p-4 relative overflow-hidden">
       {/* Toast Message - Using local state for demo alerts */}
       <AnimatePresence>
         {toastMessage && (
@@ -225,31 +255,32 @@ export default function Login() {
             initial={{ opacity: 0, y: -50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -50 }}
-            className={`fixed top-4 right-4 z-50 max-w-md ${
+            className={`fixed top-4 right-4 left-4 md:left-auto z-50 max-w-md mx-auto md:mx-0 ${
               toastMessage.type === "error"
                 ? "bg-red-50 border-red-200 text-red-700"
                 : "bg-green-50 border-green-200 text-green-700"
-            } border px-6 py-4 rounded-xl shadow-lg flex items-center gap-3`}
+            } border px-4 md:px-6 py-3 md:py-4 rounded-xl shadow-lg flex items-center gap-3`}
             role="alert"
             aria-live="assertive"
           >
-            <span className="text-2xl" aria-hidden="true">
+            <span className="text-xl md:text-2xl" aria-hidden="true">
               {toastMessage.type === "error" ? "❌" : "✅"}
             </span>
-            <div>
-              <p className="font-semibold">
+            <div className="flex-1">
+              <p className="font-semibold text-sm md:text-base">
                 {toastMessage.type === "error" ? "Error" : "Success"}
               </p>
-              <p className="text-sm">{toastMessage.message}</p>
+              <p className="text-xs md:text-sm">{toastMessage.message}</p>
             </div>
             <button
               onClick={() => setToastMessage(null)}
-              className={`ml-auto ${
+              className={`p-1 ${
                 toastMessage.type === "error"
                   ? "text-red-500 hover:text-red-700"
                   : "text-green-500 hover:text-green-700"
               }`}
               aria-label="Close notification"
+              onTouchStart={handleTouchStart}
             >
               ×
             </button>
@@ -257,9 +288,10 @@ export default function Login() {
         )}
       </AnimatePresence>
 
-      {/* Floating particles animation - with SSR protection */}
-      {typeof window !== "undefined" &&
-        Array.from({ length: 20 }).map((_, i) => (
+      {/* Floating particles animation - only on desktop or with reduced count on mobile */}
+      {!isMobile &&
+        typeof window !== "undefined" &&
+        Array.from({ length: 10 }).map((_, i) => (
           <motion.div
             key={i}
             className="absolute w-1 h-1 bg-amber-200/30 rounded-full"
@@ -293,10 +325,10 @@ export default function Login() {
         className="w-full max-w-4xl"
       >
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden relative">
-          <div className="md:flex">
+          <div className="flex flex-col md:flex-row">
             {/* Left Panel - Form */}
-            <div className="md:w-1/2 p-8 md:p-12 relative">
-              {/* Background gradient animation */}
+            <div className="w-full md:w-1/2 p-6 md:p-12 relative order-2 md:order-1">
+              {/* Background linear animation */}
               <motion.div
                 className="absolute inset-0 bg-linear-to-br from-amber-50/30 via-transparent to-transparent"
                 animate={{
@@ -310,30 +342,30 @@ export default function Login() {
                 aria-hidden="true"
               />
 
-              {/* Header */}
+              {/* Header - Simplified for mobile */}
               <div className="relative z-10">
-                <div className="text-center mb-10">
+                <div className="text-center mb-6 md:mb-10">
                   <Link to="/" className="inline-block group">
                     <motion.div
-                      whileHover={{ scale: 1.05 }}
+                      whileHover={{ scale: isMobile ? 1 : 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      className="flex items-center justify-center space-x-3"
+                      className="flex items-center justify-center space-x-2 md:space-x-3"
                     >
-                      <div className="w-12 h-12 bg-linear-to-r from-amber-500 to-amber-700 rounded-xl flex items-center justify-center shadow-lg group-hover:shadow-amber-500/50 transition-shadow">
+                      <div className="w-10 h-10 md:w-12 md:h-12 bg-linear-to-r from-amber-500 to-amber-700 rounded-xl flex items-center justify-center shadow-lg group-hover:shadow-amber-500/50 transition-shadow">
                         <motion.span
                           animate={{ rotate: [0, 5, -5, 0] }}
                           transition={{ duration: 2, repeat: Infinity }}
-                          className="text-white font-bold text-2xl"
+                          className="text-white font-bold text-xl md:text-2xl"
                           aria-hidden="true"
                         >
                           ✈️
                         </motion.span>
                       </div>
                       <div>
-                        <h1 className="text-3xl font-bold bg-linear-to-r from-amber-700 to-amber-900 bg-clip-text text-transparent">
+                        <h1 className="text-2xl md:text-3xl font-bold bg-linear-to-r from-amber-700 to-amber-900 bg-clip-text text-transparent">
                           SkyDrive Africa
                         </h1>
-                        <p className="text-gray-600 text-sm mt-1">
+                        <p className="text-gray-600 text-xs md:text-sm mt-1 hidden md:block">
                           Premium Vehicle & Helicopter Rentals
                         </p>
                       </div>
@@ -344,25 +376,25 @@ export default function Login() {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.2 }}
-                    className="mt-8"
+                    className="mt-4 md:mt-8"
                   >
-                    <h2 className="text-2xl font-bold text-gray-900">
+                    <h2 className="text-xl md:text-2xl font-bold text-gray-900">
                       Welcome Back
                     </h2>
-                    <p className="text-gray-500 mt-2">
-                      Sign in to access your bookings and favorites
+                    <p className="text-sm md:text-base text-gray-500 mt-1 md:mt-2">
+                      Sign in to access your bookings
                     </p>
                   </motion.div>
                 </div>
 
-                {/* Demo Alert */}
+                {/* Demo Alert - Mobile optimized */}
                 <AnimatePresence>
                   {showDemoAlert && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
-                      className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 relative overflow-hidden"
+                      className="bg-amber-50 border border-amber-200 rounded-xl p-3 md:p-4 mb-4 md:mb-6 relative overflow-hidden"
                     >
                       <motion.div
                         className="absolute inset-0 bg-linear-to-r from-transparent via-amber-200/20 to-transparent"
@@ -375,29 +407,31 @@ export default function Login() {
                         aria-hidden="true"
                       />
                       <div className="relative z-10 flex items-start justify-between">
-                        <div>
-                          <p className="text-sm text-amber-800 font-medium">
+                        <div className="flex-1">
+                          <p className="text-xs md:text-sm text-amber-800 font-medium">
                             🎉 Demo Mode
                           </p>
-                          <p className="text-xs text-amber-600 mt-1">
-                            Use: john@example.com / password123
+                          <p className="text-xs text-amber-600 mt-1 break-words">
+                            john@example.com / password123
                           </p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 ml-2">
                           <motion.button
-                            whileHover={{ scale: 1.05 }}
+                            whileHover={{ scale: isMobile ? 1 : 1.05 }}
                             whileTap={{ scale: 0.95 }}
                             onClick={fillDemoCredentials}
                             onMouseEnter={throttledHoverConfetti}
-                            className="text-xs bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 transition-colors"
+                            onTouchStart={handleTouchStart}
+                            className="text-xs bg-amber-600 text-white px-2 md:px-3 py-1.5 rounded-lg hover:bg-amber-700 transition-colors whitespace-nowrap"
                             aria-label="Auto-fill demo credentials"
                           >
                             Auto-fill
                           </motion.button>
                           <button
                             onClick={() => setShowDemoAlert(false)}
-                            className="text-amber-500 hover:text-amber-700"
+                            className="text-amber-500 hover:text-amber-700 p-1"
                             aria-label="Close demo alert"
+                            onTouchStart={handleTouchStart}
                           >
                             ×
                           </button>
@@ -407,20 +441,21 @@ export default function Login() {
                   )}
                 </AnimatePresence>
 
-                <div className="flex items-center gap-3 mb-6">
+                <div className="flex items-center gap-3 mb-4 md:mb-6">
                   <div className="flex-1 h-px bg-gray-200" />
-                  <span className="text-sm text-gray-400">or</span>
+                  <span className="text-xs md:text-sm text-gray-400">or</span>
                   <div className="flex-1 h-px bg-gray-200" />
                 </div>
+
                 <GoogleLoginButton />
 
-                <div className="pt-6"></div>
+                <div className="pt-4 md:pt-6"></div>
 
                 {/* Form */}
                 <Form
                   method="post"
                   onSubmit={handleDemoSubmit}
-                  className="space-y-6"
+                  className="space-y-4 md:space-y-6"
                 >
                   {/* Email */}
                   <motion.div
@@ -430,7 +465,7 @@ export default function Login() {
                   >
                     <label
                       htmlFor="email"
-                      className="block text-gray-700 font-medium mb-2"
+                      className="block text-gray-700 font-medium mb-1 md:mb-2 text-sm md:text-base"
                     >
                       Email Address
                     </label>
@@ -444,7 +479,8 @@ export default function Login() {
                         placeholder="you@example.com"
                         onFocus={() => setFocusedField("email")}
                         onBlur={() => setFocusedField(null)}
-                        className="w-full p-4 pl-12 text-gray-900 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all duration-300"
+                        onTouchStart={handleTouchStart}
+                        className="w-full p-3 md:p-4 pl-10 md:pl-12 text-gray-900 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all duration-300 text-sm md:text-base"
                         required
                         aria-required="true"
                         aria-invalid={!!actionData?.fieldErrors?.email}
@@ -453,14 +489,17 @@ export default function Login() {
                             ? "email-error"
                             : undefined
                         }
+                        inputMode="email"
+                        autoCapitalize="none"
+                        autoCorrect="off"
                       />
                       <span
-                        className="absolute left-4 top-1/2 transform -translate-y-1/2 text-xl"
+                        className="absolute left-3 md:left-4 top-1/2 transform -translate-y-1/2 text-lg md:text-xl"
                         aria-hidden="true"
                       >
                         📧
                       </span>
-                      {focusedField === "email" && (
+                      {focusedField === "email" && !isMobile && (
                         <motion.div
                           layoutId="focusIndicator"
                           className="absolute inset-0 border-2 border-amber-500 rounded-xl pointer-events-none"
@@ -476,7 +515,7 @@ export default function Login() {
                         id="email-error"
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="text-red-500 text-sm mt-1 block"
+                        className="text-red-500 text-xs md:text-sm mt-1 block"
                         role="alert"
                       >
                         {actionData.fieldErrors.email}
@@ -492,13 +531,13 @@ export default function Login() {
                   >
                     <label
                       htmlFor="password"
-                      className="block text-gray-700 font-medium mb-2"
+                      className="block text-gray-700 font-medium mb-1 md:mb-2 text-sm md:text-base"
                     >
                       Password
                     </label>
                     <div className="relative">
                       <span
-                        className="absolute left-4 top-1/2 transform -translate-y-1/2 text-xl"
+                        className="absolute left-3 md:left-4 top-1/2 transform -translate-y-1/2 text-lg md:text-xl"
                         aria-hidden="true"
                       >
                         🔒
@@ -511,7 +550,8 @@ export default function Login() {
                         placeholder="Enter your password"
                         onFocus={() => setFocusedField("password")}
                         onBlur={() => setFocusedField(null)}
-                        className="w-full p-4 pl-12 pr-12 text-gray-900 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all duration-300"
+                        onTouchStart={handleTouchStart}
+                        className="w-full p-3 md:p-4 pl-10 md:pl-12 pr-10 md:pr-12 text-gray-900 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all duration-300 text-sm md:text-base"
                         required
                         aria-required="true"
                         aria-invalid={!!actionData?.fieldErrors?.password}
@@ -520,20 +560,25 @@ export default function Login() {
                             ? "password-error"
                             : undefined
                         }
+                        autoCapitalize="none"
+                        autoCorrect="off"
                       />
                       <motion.button
                         type="button"
-                        whileHover={{ scale: 1.1 }}
+                        whileHover={{ scale: isMobile ? 1 : 1.1 }}
                         whileTap={{ scale: 0.9 }}
-                        className="absolute inset-y-0 right-4 flex items-center text-gray-500 hover:text-amber-600 transition-colors"
+                        className="absolute inset-y-0 right-3 md:right-4 flex items-center text-gray-500 hover:text-amber-600 transition-colors"
                         onClick={() => setShowPassword(!showPassword)}
+                        onTouchStart={handleTouchStart}
                         aria-label={
                           showPassword ? "Hide password" : "Show password"
                         }
                       >
-                        {showPassword ? "🙈" : "👁️"}
+                        <span className="text-lg md:text-xl">
+                          {showPassword ? "🙈" : "👁️"}
+                        </span>
                       </motion.button>
-                      {focusedField === "password" && (
+                      {focusedField === "password" && !isMobile && (
                         <motion.div
                           layoutId="focusIndicator"
                           className="absolute inset-0 border-2 border-amber-500 rounded-xl pointer-events-none"
@@ -549,7 +594,7 @@ export default function Login() {
                         id="password-error"
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="text-red-500 text-sm mt-1 block"
+                        className="text-red-500 text-xs md:text-sm mt-1 block"
                         role="alert"
                       >
                         {actionData.fieldErrors.password}
@@ -568,16 +613,18 @@ export default function Login() {
                       <input
                         type="checkbox"
                         name="remember"
-                        className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500 transition-transform"
+                        className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
                         aria-label="Remember me for 30 days"
+                        onTouchStart={handleTouchStart}
                       />
-                      <span className="ml-2 text-sm text-gray-600 group-hover:text-amber-600 transition-colors">
-                        Remember me (30 days)
+                      <span className="ml-2 text-xs md:text-sm text-gray-600 group-hover:text-amber-600 transition-colors">
+                        Remember me
                       </span>
                     </label>
                     <Link
                       to="/forgot-password"
-                      className="text-sm text-amber-600 hover:text-amber-700 hover:underline transition-colors"
+                      className="text-xs md:text-sm text-amber-600 hover:text-amber-700 hover:underline transition-colors"
+                      onTouchStart={handleTouchStart}
                     >
                       Forgot password?
                     </Link>
@@ -594,11 +641,12 @@ export default function Login() {
                       type="submit"
                       disabled={isSubmitting}
                       onMouseEnter={throttledHoverConfetti}
-                      className="relative w-full bg-linear-to-r from-amber-600 to-amber-700 text-white p-4 rounded-xl font-semibold hover:from-amber-700 hover:to-amber-800 transition-all duration-200 shadow-lg overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed"
+                      onTouchStart={handleTouchStart}
+                      className="relative w-full bg-linear-to-r from-amber-600 to-amber-700 text-white p-3 md:p-4 rounded-xl font-semibold hover:from-amber-700 hover:to-amber-800 transition-all duration-200 shadow-lg overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
                       aria-label={isSubmitting ? "Signing in..." : "Sign in"}
                     >
-                      {/* Shine effect */}
-                      {!isSubmitting && (
+                      {/* Shine effect - disabled on mobile for performance */}
+                      {!isSubmitting && !isMobile && (
                         <motion.div
                           className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent"
                           animate={{ x: ["-100%", "200%"] }}
@@ -621,10 +669,10 @@ export default function Login() {
                                 repeat: Infinity,
                                 ease: "linear",
                               }}
-                              className="w-5 h-5 border-2 border-white border-t-transparent rounded-full"
+                              className="w-4 h-4 md:w-5 md:h-5 border-2 border-white border-t-transparent rounded-full"
                               aria-hidden="true"
                             />
-                            Signing in...
+                            <span>Signing in...</span>
                           </>
                         ) : (
                           <>
@@ -648,14 +696,15 @@ export default function Login() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.7 }}
-                  className="mt-8 text-center"
+                  className="mt-6 md:mt-8 text-center"
                 >
-                  <p className="text-gray-600">
+                  <p className="text-xs md:text-sm text-gray-600">
                     Don't have an account?{" "}
                     <Link
                       to="/register"
                       className="text-amber-600 font-semibold hover:underline inline-flex items-center gap-1 group"
                       onMouseEnter={throttledHoverConfetti}
+                      onTouchStart={handleTouchStart}
                     >
                       Create Account
                       <motion.span
@@ -668,11 +717,12 @@ export default function Login() {
                     </Link>
                   </p>
 
-                  <p className="text-gray-500 text-sm mt-6">
+                  <p className="text-gray-500 text-xs mt-4 md:mt-6 px-4">
                     By signing in, you agree to our{" "}
                     <Link
                       to="/terms"
                       className="text-amber-600 hover:underline"
+                      onTouchStart={handleTouchStart}
                     >
                       Terms
                     </Link>{" "}
@@ -680,6 +730,7 @@ export default function Login() {
                     <Link
                       to="/privacy"
                       className="text-amber-600 hover:underline"
+                      onTouchStart={handleTouchStart}
                     >
                       Privacy Policy
                     </Link>
@@ -688,8 +739,8 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Right Panel - Hero */}
-            <div className="md:w-1/2 bg-linear-to-br from-amber-600 to-amber-800 text-white p-8 md:p-12 relative overflow-hidden">
+            {/* Right Panel - Hero (Hidden on mobile for better performance) */}
+            <div className="hidden md:block md:w-1/2 bg-linear-to-br from-amber-600 to-amber-800 text-white p-12 relative overflow-hidden order-1 md:order-2">
               {/* Animated background patterns */}
               <motion.div
                 className="absolute inset-0 opacity-10"
@@ -699,7 +750,7 @@ export default function Login() {
                 transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
                 style={{
                   backgroundImage:
-                    "radial-gradient(circle at 30% 40%, white 1px, transparent 1px)",
+                    "radial-linear(circle at 30% 40%, white 1px, transparent 1px)",
                   backgroundSize: "30px 30px",
                 }}
                 aria-hidden="true"
