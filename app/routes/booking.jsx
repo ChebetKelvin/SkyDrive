@@ -8,7 +8,7 @@ import {
   useNavigation,
   useActionData,
 } from "react-router";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
 import { getVehicleById } from "../models/vehicles";
 import {
@@ -28,6 +28,7 @@ import {
   FaCalendarAlt,
   FaClock,
   FaUser,
+  FaUsers,
   FaCreditCard,
   FaLock,
   FaPhone,
@@ -406,6 +407,11 @@ export default function BookingPage() {
     insurance: 0,
     total: 0,
   });
+  // Add with your other useState declarations
+  const [showDurationOptions, setShowDurationOptions] = useState(false);
+  const [showCustomDuration, setShowCustomDuration] = useState(false);
+
+  const [customDuration, setCustomDuration] = useState(24);
 
   useEffect(() => {
     const tomorrow = new Date();
@@ -820,105 +826,718 @@ export default function BookingPage() {
                   </div>
 
                   {/* Rental Details */}
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                      <FaCalendarAlt className="text-amber-600" />
-                      Rental Details
-                    </h3>
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Pickup Date *
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="date"
-                            name="pickupDate"
-                            value={formState.pickupDate}
-                            onChange={handleChange}
-                            required
-                            min={new Date().toISOString().split("T")[0]}
-                            className="w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
-                          />
-                          <FaCalendarAlt className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    {/* Section Header */}
+                    <div className="p-6 bg-linear-to-r from-amber-50 to-white border-b border-amber-100">
+                      <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-amber-200/50 flex items-center justify-center">
+                          <FaCalendarAlt className="text-amber-600 w-4 h-4" />
                         </div>
-                        {actionData?.errors?.pickupDate && (
-                          <p className="text-red-500 text-sm mt-1">
-                            {actionData.errors.pickupDate}
-                          </p>
-                        )}
+                        Rental Details
+                      </h3>
+                      <p className="text-sm text-gray-500 mt-1 ml-10">
+                        Select your pickup time and rental duration
+                      </p>
+                    </div>
+
+                    <div className="p-6 space-y-6">
+                      {/* Date & Time Row - Modern Card Style */}
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {/* Pickup Date Card */}
+                        <div className="group relative">
+                          <div className="absolute inset-0 bg-linear-to-r from-amber-400/0 to-amber-400/0 group-hover:from-amber-400/5 group-hover:to-amber-400/5 rounded-xl transition-all duration-500" />
+                          <div className="relative">
+                            <label className="block text-sm font-medium text-gray-700 mb-2 items-center gap-1">
+                              <span>Pickup Date</span>
+                              <span className="text-amber-600">*</span>
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="date"
+                                name="pickupDate"
+                                value={formState.pickupDate}
+                                onChange={handleChange}
+                                required
+                                min={new Date().toISOString().split("T")[0]}
+                                className="w-full px-4 py-3.5 pl-12 text-gray-800 bg-gray-50 border-2 border-gray-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-200 transition-all outline-none appearance-none"
+                              />
+                              <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                                <FaCalendarAlt className="text-amber-400 group-hover:text-amber-500 transition-colors" />
+                              </div>
+                              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                                <svg
+                                  className="w-5 h-5 text-gray-400"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                  />
+                                </svg>
+                              </div>
+                            </div>
+                            {actionData?.errors?.pickupDate && (
+                              <p className="text-red-500 text-sm mt-2 flex items-center gap-1">
+                                <span className="text-lg">⚠️</span>
+                                {actionData.errors.pickupDate}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Pickup Time Card */}
+                        <div className="group relative">
+                          <div className="absolute inset-0 bg-linear-to-r from-amber-400/0 to-amber-400/0 group-hover:from-amber-400/5 group-hover:to-amber-400/5 rounded-xl transition-all duration-500" />
+                          <div className="relative">
+                            <label className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                              <span>Pickup Time</span>
+                              <span className="text-amber-600">*</span>
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="time"
+                                name="pickupTime"
+                                value={formState.pickupTime}
+                                onChange={handleChange}
+                                required
+                                className="w-full px-4 py-3.5 pl-12 text-gray-800 bg-gray-50 border-2 border-gray-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-200 transition-all outline-none"
+                              />
+                              <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                                <FaClock className="text-amber-400 group-hover:text-amber-500 transition-colors" />
+                              </div>
+                              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                                <svg
+                                  className="w-5 h-5 text-gray-400"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                                  />
+                                </svg>
+                              </div>
+                            </div>
+                            {actionData?.errors?.pickupTime && (
+                              <p className="text-red-500 text-sm mt-2 flex items-center gap-1">
+                                <span className="text-lg">⚠️</span>
+                                {actionData.errors.pickupTime}
+                              </p>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Pickup Time *
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="time"
-                            name="pickupTime"
-                            value={formState.pickupTime}
-                            onChange={handleChange}
-                            required
-                            className="w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
-                          />
-                          <FaClock className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
+
+                      {/* Duration Section - Modern Collapsible Design */}
+                      <div className="bg-linear-to-br from-amber-50/50 to-white rounded-xl border border-amber-100 overflow-hidden">
+                        {/* Duration Header */}
+                        <div className="p-4 bg-white border-b border-amber-100">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                                <span className="text-amber-600 text-lg">
+                                  ⏱️
+                                </span>
+                              </div>
+                              <div>
+                                <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                                  Rental Duration
+                                  <span className="text-xs bg-amber-600 text-white px-2 py-0.5 rounded-full">
+                                    Required
+                                  </span>
+                                </h4>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                  Select how long you need the vehicle
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Duration Badge & Toggle */}
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <div className="text-2xl font-bold text-amber-600">
+                                  {formState.duration}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  hours
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setShowDurationOptions(!showDurationOptions)
+                                }
+                                className="w-8 h-8 flex items-center justify-center bg-amber-100 hover:bg-amber-200 rounded-full text-amber-600 transition-all"
+                              >
+                                <svg
+                                  className={`w-5 h-5 transform transition-transform duration-300 ${showDurationOptions ? "rotate-180" : ""}`}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 9l-7 7-7-7"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                        {actionData?.errors?.pickupTime && (
-                          <p className="text-red-500 text-sm mt-1">
-                            {actionData.errors.pickupTime}
-                          </p>
-                        )}
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Duration (hours) *
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="number"
-                            min="1"
-                            max="168"
-                            name="duration"
-                            value={formState.duration}
-                            onChange={handleChange}
-                            required
-                            className="w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
-                          />
-                          <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                            hrs
-                          </span>
+
+                        {/* Quick Controls - Always Visible */}
+                        <div className="p-4 border-b border-amber-100">
+                          <div className="flex items-center gap-4">
+                            {/* Quick Preset Pills */}
+                            <div className="flex-1">
+                              <p className="text-xs font-medium text-gray-500 mb-2">
+                                Quick Select
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {[
+                                  { label: "4h", value: 4 },
+                                  { label: "8h", value: 8 },
+                                  { label: "12h", value: 12 },
+                                  { label: "1d", value: 24 },
+                                  { label: "2d", value: 48 },
+                                  { label: "3d", value: 72 },
+                                ].map((preset) => (
+                                  <button
+                                    key={preset.value}
+                                    type="button"
+                                    onClick={() =>
+                                      handleChange({
+                                        target: {
+                                          name: "duration",
+                                          value: preset.value,
+                                        },
+                                      })
+                                    }
+                                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                                      formState.duration === preset.value
+                                        ? "bg-amber-600 text-white shadow-lg shadow-amber-600/30"
+                                        : "bg-white text-gray-600 border border-gray-200 hover:border-amber-300 hover:bg-amber-50"
+                                    }`}
+                                  >
+                                    {preset.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Price Preview */}
+                            <div className="bg-amber-600/10 px-4 py-2 rounded-xl">
+                              <p className="text-xs text-amber-600 font-medium">
+                                Est. Base
+                              </p>
+                              <p className="text-lg font-bold text-amber-700">
+                                {formatPrice(totals.base)}
+                              </p>
+                            </div>
+                          </div>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Hourly rate: {formatPrice(hourlyRate)}/hr
-                        </p>
+
+                        {/* Expandable Advanced Options */}
+                        <AnimatePresence>
+                          {showDurationOptions && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.3 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="p-4 space-y-4">
+                                {/* Range Slider */}
+                                <div>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-sm font-medium text-gray-700">
+                                      Adjust with slider
+                                    </span>
+                                    <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-full">
+                                      {formState.duration} hrs
+                                    </span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min="1"
+                                    max="168"
+                                    step="1"
+                                    name="duration"
+                                    value={formState.duration}
+                                    onChange={handleChange}
+                                    className="w-full h-2.5 bg-linear-to-r from-amber-200 via-amber-400 to-amber-600 rounded-lg appearance-none cursor-pointer accent-amber-600"
+                                  />
+                                  <div className="flex justify-between mt-2">
+                                    <span className="text-xs text-gray-400">
+                                      1h
+                                    </span>
+                                    <span className="text-xs text-gray-400">
+                                      24h
+                                    </span>
+                                    <span className="text-xs text-gray-400">
+                                      48h
+                                    </span>
+                                    <span className="text-xs text-gray-400">
+                                      72h
+                                    </span>
+                                    <span className="text-xs text-gray-400">
+                                      7d+
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Extended Duration Presets */}
+                                <div className="mt-6">
+                                  <div className="flex items-center justify-between mb-4">
+                                    <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                      <span className="w-1.5 h-5 bg-linear-to-b from-amber-500 to-amber-600 rounded-full"></span>
+                                      Extended Rental Options
+                                    </p>
+                                    <span className="text-xs font-medium text-amber-700 bg-amber-100 px-3 py-1 rounded-full border border-amber-200 shadow-sm">
+                                      Save up to 20%
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    {[
+                                      {
+                                        label: "Weekly",
+                                        duration: "7 days",
+                                        value: 168,
+                                        discount: "10% OFF",
+                                        savings:
+                                          "Save KES " +
+                                          formatAmountForMessage(
+                                            totals.base * 0.1,
+                                          ),
+                                        color: "amber",
+                                        icon: "📅",
+                                      },
+                                      {
+                                        label: "Bi-Weekly",
+                                        duration: "14 days",
+                                        value: 336,
+                                        discount: "15% OFF",
+                                        savings:
+                                          "Save KES " +
+                                          formatAmountForMessage(
+                                            totals.base * 0.15,
+                                          ),
+                                        color: "blue",
+                                        icon: "📆",
+                                      },
+                                      {
+                                        label: "Monthly",
+                                        duration: "30 days",
+                                        value: 720,
+                                        discount: "20% OFF",
+                                        savings:
+                                          "Save KES " +
+                                          formatAmountForMessage(
+                                            totals.base * 0.2,
+                                          ),
+                                        color: "purple",
+                                        icon: "⭐",
+                                      },
+                                      {
+                                        label: "Custom",
+                                        duration: "Flexible",
+                                        value: "custom",
+                                        special: true,
+                                        color: "gray",
+                                        icon: "⚡",
+                                      },
+                                    ].map((preset) => (
+                                      <button
+                                        key={preset.label}
+                                        type="button"
+                                        onClick={() =>
+                                          preset.special
+                                            ? setShowCustomDuration(true)
+                                            : handleChange({
+                                                target: {
+                                                  name: "duration",
+                                                  value: preset.value,
+                                                },
+                                              })
+                                        }
+                                        className={`group relative overflow-hidden rounded-xl transition-all duration-300 ${
+                                          formState.duration === preset.value &&
+                                          !preset.special
+                                            ? "ring-2 ring-offset-2 ring-amber-600 shadow-xl scale-[1.02]"
+                                            : "hover:shadow-lg hover:-translate-y-0.5"
+                                        }`}
+                                      >
+                                        {/* Background linear */}
+                                        <div
+                                          className={`absolute inset-0 bg-linear-to-br ${
+                                            preset.special
+                                              ? "from-gray-600 to-gray-700"
+                                              : preset.color === "amber"
+                                                ? "from-amber-500 to-amber-600"
+                                                : preset.color === "blue"
+                                                  ? "from-blue-500 to-blue-600"
+                                                  : "from-purple-500 to-purple-600"
+                                          } opacity-90 group-hover:opacity-100 transition-opacity`}
+                                        />
+
+                                        {/* Content */}
+                                        <div className="relative p-4 text-white">
+                                          {/* Icon */}
+                                          <div className="text-2xl mb-2 filter drop-shadow-lg">
+                                            {preset.icon}
+                                          </div>
+
+                                          {/* Label & Duration */}
+                                          <div className="text-left">
+                                            <div className="font-bold text-base leading-tight">
+                                              {preset.label}
+                                            </div>
+                                            <div className="text-xs text-white/80 font-medium mt-0.5">
+                                              {preset.duration}
+                                            </div>
+                                          </div>
+
+                                          {/* Discount Badge */}
+                                          {preset.discount && (
+                                            <div className="absolute top-2 right-2">
+                                              <div className="relative">
+                                                <div className="absolute inset-0 bg-white rounded-full blur-sm opacity-50"></div>
+                                                <div className="relative bg-white text-gray-900 text-[10px] font-extrabold px-2 py-1 rounded-full shadow-lg">
+                                                  {preset.discount}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )}
+
+                                          {/* Savings Amount */}
+                                          {preset.savings && (
+                                            <div className="mt-2 pt-2 border-t border-white/20">
+                                              <div className="text-[10px] text-white/70">
+                                                You save
+                                              </div>
+                                              <div className="text-sm font-bold text-white">
+                                                {preset.savings}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* Hover Effect Overlay */}
+                                        <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity" />
+                                      </button>
+                                    ))}
+                                  </div>
+
+                                  {/* Additional Info */}
+                                  <div className="mt-4 p-3 bg-linear-to-r from-amber-50 to-blue-50 rounded-lg border border-amber-200/50">
+                                    <div className="flex items-start gap-2">
+                                      <span className="text-amber-600 text-lg">
+                                        💰
+                                      </span>
+                                      <div className="flex-1">
+                                        <p className="text-xs text-gray-600">
+                                          <span className="font-semibold text-gray-900">
+                                            Pro tip:
+                                          </span>{" "}
+                                          Long-term rentals include free
+                                          maintenance and 24/7 support.
+                                          <button className="text-amber-600 hover:underline font-medium ml-1">
+                                            Learn more →
+                                          </button>
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Custom Duration Modal - If needed */}
+                                <AnimatePresence>
+                                  {showCustomDuration && (
+                                    <motion.div
+                                      initial={{ opacity: 0 }}
+                                      animate={{ opacity: 1 }}
+                                      exit={{ opacity: 0 }}
+                                      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+                                      onClick={() =>
+                                        setShowCustomDuration(false)
+                                      }
+                                    >
+                                      <motion.div
+                                        initial={{ scale: 0.9, y: 20 }}
+                                        animate={{ scale: 1, y: 0 }}
+                                        exit={{ scale: 0.9, y: 20 }}
+                                        className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <h3 className="text-xl font-bold text-gray-900 mb-4">
+                                          Custom Duration
+                                        </h3>
+                                        <p className="text-sm text-gray-600 mb-6">
+                                          Enter your desired rental duration.
+                                          For periods longer than 30 days, our
+                                          team will contact you with special
+                                          rates.
+                                        </p>
+
+                                        <div className="space-y-4">
+                                          <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                              Number of hours
+                                            </label>
+                                            <input
+                                              type="number"
+                                              min="1"
+                                              max="720"
+                                              value={customDuration}
+                                              onChange={(e) =>
+                                                setCustomDuration(
+                                                  parseInt(e.target.value) || 1,
+                                                )
+                                              }
+                                              className="w-full px-4 py-3 text-gray-800 border-2 border-gray-200 rounded-xl focus:border-amber-500 focus:ring-2 focus:ring-amber-200 transition-all outline-none"
+                                              placeholder="Enter hours"
+                                            />
+                                          </div>
+
+                                          <div className="bg-amber-50 p-4 rounded-xl">
+                                            <div className="flex justify-between text-sm mb-2">
+                                              <span className="text-gray-600">
+                                                Base price:
+                                              </span>
+                                              <span className="font-semibold text-gray-900">
+                                                {formatPrice(
+                                                  hourlyRate *
+                                                    (customDuration || 1),
+                                                )}
+                                              </span>
+                                            </div>
+                                            <div className="flex justify-between text-sm">
+                                              <span className="text-gray-600">
+                                                With fees:
+                                              </span>
+                                              <span className="font-bold text-amber-600">
+                                                {formatPrice(
+                                                  hourlyRate *
+                                                    (customDuration || 1) *
+                                                    1.15,
+                                                )}
+                                              </span>
+                                            </div>
+                                          </div>
+
+                                          <div className="flex gap-3">
+                                            <button
+                                              onClick={() => {
+                                                handleChange({
+                                                  target: {
+                                                    name: "duration",
+                                                    value: customDuration,
+                                                  },
+                                                });
+                                                setShowCustomDuration(false);
+                                              }}
+                                              className="flex-1 py-3 bg-amber-600 text-white font-semibold rounded-xl hover:bg-amber-700 transition-all"
+                                            >
+                                              Apply Duration
+                                            </button>
+                                            <button
+                                              onClick={() =>
+                                                setShowCustomDuration(false)
+                                              }
+                                              className="flex-1 py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-all"
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </motion.div>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+
+                                {/* Number Input with Stepper */}
+                                <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl">
+                                  <span className="text-sm font-medium text-gray-700 min-w-20">
+                                    Custom Hours:
+                                  </span>
+                                  <div className="flex-1 flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleChange({
+                                          target: {
+                                            name: "duration",
+                                            value: Math.max(
+                                              1,
+                                              formState.duration - 1,
+                                            ),
+                                          },
+                                        })
+                                      }
+                                      className="w-10 h-10 flex items-center justify-center bg-white border border-gray-300 rounded-lg hover:bg-amber-50 hover:border-amber-300 transition-all text-gray-600 font-bold"
+                                    >
+                                      −
+                                    </button>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max="168"
+                                      name="duration"
+                                      value={formState.duration}
+                                      onChange={handleChange}
+                                      className="w-24 text-center px-3 py-2 text-gray-800 bg-white border-2 border-gray-200 rounded-lg focus:border-amber-500 focus:ring-2 focus:ring-amber-200 transition-all outline-none"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleChange({
+                                          target: {
+                                            name: "duration",
+                                            value: Math.min(
+                                              168,
+                                              formState.duration + 1,
+                                            ),
+                                          },
+                                        })
+                                      }
+                                      className="w-10 h-10 flex items-center justify-center bg-white border border-gray-300 rounded-lg hover:bg-amber-50 hover:border-amber-300 transition-all text-gray-600 font-bold"
+                                    >
+                                      +
+                                    </button>
+                                    <span className="text-gray-500 text-sm">
+                                      hours
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Detailed Price Breakdown */}
+                                <div className="bg-white rounded-xl border border-amber-100 p-4">
+                                  <h5 className="font-medium text-gray-900 mb-3">
+                                    Price Details
+                                  </h5>
+                                  <div className="space-y-2">
+                                    <div className="flex justify-between text-sm">
+                                      <span className="text-gray-600">
+                                        Hourly Rate × {formState.duration} hours
+                                      </span>
+                                      <span className="font-medium text-gray-900">
+                                        {formatPrice(
+                                          hourlyRate * formState.duration,
+                                        )}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                      <span className="text-gray-600">
+                                        Service Fee (10%)
+                                      </span>
+                                      <span className="font-medium text-amber-600">
+                                        {formatPrice(totals.serviceFee)}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                      <span className="text-gray-600">
+                                        Insurance (5%)
+                                      </span>
+                                      <span className="font-medium text-amber-600">
+                                        {formatPrice(totals.insurance)}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between pt-2 mt-2 border-t border-dashed border-gray-200">
+                                      <span className="font-bold text-gray-900">
+                                        Total
+                                      </span>
+                                      <span className="text-xl font-bold text-amber-600">
+                                        {formatPrice(totals.total)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Special Offers */}
+                                <div className="bg-linear-to-r from-purple-50 to-amber-50 p-4 rounded-xl">
+                                  <div className="flex items-start gap-3">
+                                    <span className="text-2xl">🎁</span>
+                                    <div>
+                                      <p className="font-medium text-gray-900">
+                                        Special Long-term Rates
+                                      </p>
+                                      <p className="text-sm text-gray-600 mt-1">
+                                        Weekly rentals get 10% off, Monthly
+                                        rentals get 20% off.
+                                        <button className="text-amber-600 hover:underline ml-1 font-medium">
+                                          Contact us for corporate rates
+                                        </button>
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
+                        {/* Error Display */}
                         {actionData?.errors?.duration && (
-                          <p className="text-red-500 text-sm mt-1">
-                            {actionData.errors.duration}
-                          </p>
+                          <div className="p-4 bg-red-50 border-t border-red-200">
+                            <p className="text-red-600 text-sm flex items-center gap-2">
+                              <span className="text-lg">⚠️</span>
+                              {actionData.errors.duration}
+                            </p>
+                          </div>
                         )}
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Passengers *
-                        </label>
-                        <input
-                          type="number"
-                          min="1"
-                          max={vehicle.capacity?.passengers || 4}
-                          name="passengers"
-                          value={formState.passengers}
-                          onChange={handleChange}
-                          required
-                          className="w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
-                        />
-                        <p className="text-xs text-gray-500 mt-1">
-                          Max: {vehicle.capacity?.passengers || 4} passengers
-                        </p>
-                        {actionData?.errors?.passengers && (
-                          <p className="text-red-500 text-sm mt-1">
-                            {actionData.errors.passengers}
+
+                      {/* Passengers Section */}
+                      <div className="group relative">
+                        <div className="absolute inset-0 bg-linear-to-r from-amber-400/0 to-amber-400/0 group-hover:from-amber-400/5 group-hover:to-amber-400/5 rounded-xl transition-all duration-500" />
+                        <div className="relative">
+                          <label className="block text-sm font-medium text-gray-700 mb-2 items-center gap-1">
+                            <span>Number of Passengers</span>
+                            <span className="text-amber-600">*</span>
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="1"
+                              max={vehicle.capacity?.passengers || 4}
+                              name="passengers"
+                              value={formState.passengers}
+                              onChange={handleChange}
+                              required
+                              className="w-full px-4 py-3.5 pl-12 text-gray-800 bg-gray-50 border-2 border-gray-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-200 transition-all outline-none"
+                            />
+                            <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                              <FaUsers className="text-amber-400 group-hover:text-amber-500 transition-colors" />
+                            </div>
+                            <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                              <span className="text-sm text-gray-400 bg-gray-100 px-2 py-1 rounded">
+                                Max {vehicle.capacity?.passengers || 4}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                            <span className="text-amber-500">ℹ️</span>
+                            This vehicle comfortably accommodates up to{" "}
+                            {vehicle.capacity?.passengers || 4} passengers
                           </p>
-                        )}
+                          {actionData?.errors?.passengers && (
+                            <p className="text-red-500 text-sm mt-2 flex items-center gap-1">
+                              <span className="text-lg">⚠️</span>
+                              {actionData.errors.passengers}
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>

@@ -33,64 +33,118 @@ const throttle = (func, limit) => {
 
 // Action - handle login form submission
 export async function action({ request }) {
+  console.log("🚀 Login action started");
+
   let session = await getSession(request.headers.get("Cookie"));
+  console.log("📦 Session created:", session);
+
   let formData = await request.formData();
   let email = formData.get("email");
   let password = formData.get("password");
   let remember = formData.get("remember") === "on";
+
+  console.log("📧 Email:", email);
+  console.log("🔑 Password provided:", !!password);
+  console.log("💭 Remember:", remember);
 
   let fieldErrors = {};
   if (!email) fieldErrors.email = "Email is required";
   if (!password) fieldErrors.password = "Password is required";
 
   if (Object.keys(fieldErrors).length > 0) {
+    console.log("❌ Field errors:", fieldErrors);
     return { fieldErrors, values: { email } };
   }
 
   try {
+    console.log("🔍 Looking up user by email:", email);
     let user = await getUserByEmail(email);
+    console.log(
+      "👤 User found:",
+      user
+        ? {
+            id: user._id?.toString(),
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            hasPassword: !!user.password,
+          }
+        : "No user",
+    );
 
     if (!user) {
+      console.log("❌ User not found");
       setErrorMessage(session, "Wrong credentials! Try again..");
+      const cookie = await commitSession(session);
+      console.log("🍪 Cookie set (user not found):", cookie ? "Yes" : "No");
       return redirect("/login", {
-        headers: { "Set-Cookie": await commitSession(session) },
+        headers: { "Set-Cookie": cookie },
       });
     }
 
+    console.log("🔐 Comparing passwords...");
     let validPassword = await bcrypt.compare(password, user.password);
+    console.log("✅ Password valid:", validPassword);
 
     if (!validPassword) {
+      console.log("❌ Invalid password");
       setErrorMessage(session, "Wrong credentials! Try again..");
+      const cookie = await commitSession(session);
+      console.log("🍪 Cookie set (invalid password):", cookie ? "Yes" : "No");
       return redirect("/login", {
-        headers: { "Set-Cookie": await commitSession(session) },
+        headers: { "Set-Cookie": cookie },
       });
     }
 
-    session.set("user", {
+    // Log what we're setting in session
+    const userSessionData = {
       id: user._id.toString(),
       name: user.name,
       email: user.email,
       role: user.role,
-    });
+    };
+
+    console.log("💾 Setting session data:", userSessionData);
+    session.set("user", userSessionData);
 
     setSuccessMessage(session, `Welcome back, ${user.name}!`);
 
     const redirectUrl = user.role === "admin" ? "/admin" : "/";
+    console.log("🔄 Redirecting to:", redirectUrl, "for role:", user.role);
+
+    // Commit session with cookie options
+    const cookieOptions = {
+      maxAge: remember ? 60 * 60 * 24 * 30 : undefined,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/", // Explicitly set path
+    };
+    console.log("🍪 Cookie options:", cookieOptions);
+
+    const cookie = await commitSession(session, cookieOptions);
+    console.log(
+      "🍪 Cookie created:",
+      cookie ? "Yes (length: " + cookie.length + ")" : "No",
+    );
+
+    // Log the full response headers
+    console.log("📤 Response headers:", {
+      Location: redirectUrl,
+      "Set-Cookie": cookie ? "Present" : "Missing",
+    });
 
     return redirect(redirectUrl, {
       headers: {
-        "Set-Cookie": await commitSession(session, {
-          maxAge: remember ? 60 * 60 * 24 * 30 : undefined,
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-        }),
+        "Set-Cookie": cookie,
       },
     });
   } catch (error) {
+    console.error("❌ Login error:", error);
     setErrorMessage(session, "Login failed. Please try again.");
+    const cookie = await commitSession(session);
     return redirect("/login", {
-      headers: { "Set-Cookie": await commitSession(session) },
+      headers: { "Set-Cookie": cookie },
     });
   }
 }
